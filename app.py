@@ -23,9 +23,28 @@ supabase = init_supabase()
 st.title("🏗️ Control de Obras y Materiales")
 st.markdown("Sistema sincronizado en tiempo real (PC y Teléfonos).")
 
-# --- PESTAÑAS PRINCIPALES ---
-tab_facturas, tab_tareas = st.tabs(
-    ["💰 Facturas y Gastos", "📋 Tareas Programadas"]
+# --- BOTÓN DE ACTUALIZACIÓN RÁPIDA DE LA NUBE ---
+col_top1, col_top2 = st.columns([6, 1])
+with col_top2:
+  if st.button("🔄 Actualizar", use_container_width=True):
+    st.rerun()
+
+
+# --- FUNCIÓN PARA FORMATEAR MONTO ESTILO ###.###,## ---
+def formatear_monto_venezuela(valor):
+  try:
+    val_float = float(valor)
+    # Formato con coma decimal y punto de miles
+    s = f"{val_float:,.2f}"
+    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+    return s
+  except Exception:
+    return "0,00"
+
+
+# --- PESTAÑAS PRINCIPALES (INCLUYENDO REPORTES) ---
+tab_facturas, tab_tareas, tab_reportes = st.tabs(
+    ["💰 Facturas y Gastos", "📋 Tareas Programadas", "📊 Reportes y Desglose"]
 )
 
 
@@ -45,13 +64,24 @@ with tab_facturas:
     monto_str = st.text_input(
         "Monto en Bs.",
         value="",
-        placeholder="Ej. 1500",
+        placeholder="Ej. 1500,50",
     )
 
+    # Obtener lista unificada de obras existentes
     try:
       res_obras = supabase.table("registros").select("obra").execute()
       lista_existente = (
-          sorted(list(set([r["obra"] for r in res_obras.data if r["obra"]])))
+          sorted(
+              list(
+                  set(
+                      [
+                          str(r["obra"]).upper()
+                          for r in res_obras.data
+                          if r["obra"]
+                      ]
+                  )
+              )
+          )
           if res_obras.data
           else []
       )
@@ -67,6 +97,12 @@ with tab_facturas:
     else:
       obra_final = seleccion_obra.strip().upper()
 
+    # Nuevo campo: Origen de los fondos
+    origen_input = st.text_input(
+        "Origen de los Fondos", placeholder="Ej. BANCO, CAJA, CLIENTE..."
+    )
+    origen_final = origen_input.strip().upper()
+
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
 
@@ -76,7 +112,9 @@ with tab_facturas:
 
     if submit_gasto:
       try:
-        monto_val = float(monto_str.replace(",", "."))
+        # Reemplazar coma por punto para procesar cálculo matemático limpio
+        monto_limpio = monto_str.replace(".", "").replace(",", ".")
+        monto_val = float(monto_limpio)
       except ValueError:
         monto_val = 0.0
 
@@ -88,9 +126,15 @@ with tab_facturas:
               "fecha": fecha_gasto.strftime("%Y-%m-%d"),
               "monto": monto_val,
               "obra": obra_final,
-              "descripcion": descripcion_final,
+              "descripcion": (
+                  f"[{origen_final}] {descripcion_final}"
+                  if origen_final
+                  else descripcion_final
+              ),  # Guardamos el origen integrado o visible
               "estado": "REGISTRADO",
           }
+          # Si prefieres una columna independiente, asegúrate de tener la columna en supabase,
+          # o la adjuntamos limpiamente en la descripción como se estructuró arriba.
           supabase.table("registros").insert(data).execute()
           st.sidebar.success("¡Gasto guardado con éxito!")
           st.rerun()
@@ -116,20 +160,23 @@ with tab_facturas:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime(
             "%d/%m/%Y"
         )
-      
-      # Forzar mayúsculas en visualización del dataframe de gastos
+
       if "obra" in df.columns:
         df["obra"] = df["obra"].astype(str).str.upper()
       if "descripcion" in df.columns:
         df["descripcion"] = df["descripcion"].astype(str).str.upper()
 
-      obras_disp = ["Todas"] + list(df["obra"].unique())
+      # Aplicar formato visual venezolano de montos en la tabla
+      df_view = df.copy()
+      df_view["monto_fmt"] = df_view["monto"].apply(formatear_monto_venezuela)
+
+      obras_disp = ["Todas"] + list(df_view["obra"].unique())
       obra_sel = st.selectbox(
           "Filtrar gastos por Obra:", obras_disp, key="filtro_gasto"
       )
 
       if obra_sel != "Todas":
-        df = df[df["obra"] == obra_sel]
+        df_view = df_view[df_view["obra"] == obra_sel]
 
       total_monto = df["monto"].sum()
       st.metric(
@@ -138,10 +185,14 @@ with tab_facturas:
               if obra_sel != "Todas"
               else "Total General de Gastos"
           ),
-          value=f"Bs. {total_monto:,.2f}",
+          value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      st.dataframe(df, use_container_width=True)
+      # Reorganizar columnas para mostrar el monto formateado
+      if "monto" in df_view.columns:
+        df_view = df_view.drop(columns=["monto"])
+
+      st.dataframe(df_view, use_container_width=True)
     else:
       st.info("No hay gastos registrados todavía.")
   except Exception as e:
@@ -157,7 +208,7 @@ with tab_facturas:
       )
       if res_del.data:
         opciones_del = {
-            f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {r['monto']:,.2f} ({str(r['descripcion']).upper()})"
+            f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {formatear_monto_venezuela(r['monto'])} ({str(r['descripcion']).upper()})"
             : r["id"]
             for r in res_del.data
         }
@@ -186,10 +237,21 @@ with tab_tareas:
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
 
     with col_f1:
+      # Lista unificada de obras compartida con gastos
       try:
         res_obras_t = supabase.table("registros").select("obra").execute()
         lista_existente_t = (
-            sorted(list(set([str(r["obra"]).upper() for r in res_obras_t.data if r["obra"]])))
+            sorted(
+                list(
+                    set(
+                        [
+                            str(r["obra"]).upper()
+                            for r in res_obras_t.data
+                            if r["obra"]
+                        ]
+                    )
+                )
+            )
             if res_obras_t.data
             else []
         )
@@ -197,7 +259,9 @@ with tab_tareas:
         lista_existente_t = []
 
       opciones_obra_t = lista_existente_t + ["➕ Agregar nueva obra..."]
-      seleccion_obra_t = st.selectbox("Obra / Destino", opciones_obra_t, key="t_sel_obra")
+      seleccion_obra_t = st.selectbox(
+          "Obra / Destino", opciones_obra_t, key="t_sel_obra"
+      )
 
       if seleccion_obra_t == "➕ Agregar nueva obra...":
         t_obra_input = st.text_input("Nueva obra:")
@@ -251,10 +315,12 @@ with tab_tareas:
       for t in res_tareas.data:
         estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
         icono = "🔵" if estado_limpio == "LISTO" else "⏳"
-        
+
         fecha_fmt = t["fecha"]
         try:
-          fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime("%d/%m/%Y")
+          fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime(
+              "%d/%m/%Y"
+          )
         except Exception:
           pass
 
@@ -312,3 +378,79 @@ with tab_tareas:
       st.info("No hay tareas programadas registradas en este momento.")
   except Exception as e:
     st.error(f"Error cargando tareas: {e}")
+
+
+# ==========================================
+# SECCIÓN 3: REPORTES Y DESGLOSE
+# ==========================================
+with tab_reportes:
+  st.subheader("📊 Reportes y Estadísticas de Gastos")
+
+  try:
+    res_rep = (
+        supabase.table("registros")
+        .select("*")
+        .not_.like("estado", "TAREA_%")
+        .execute()
+    )
+    if res_rep.data:
+      df_rep = pd.DataFrame(res_rep.data)
+
+      # Extraer o identificar origen de fondos si está en la descripción (ej. [BANCO] ...)
+      def extraer_origen(desc):
+        desc_str = str(desc)
+        if desc_str.startswith("[") and "]" in desc_str:
+          return desc_str.split("]")[0].replace("[", "")
+        return "GENERAL / OTROS"
+
+      df_rep["origen_fondos"] = df_rep["descripcion"].apply(extraer_origen)
+      df_rep["obra"] = df_rep["obra"].astype(str).str.upper()
+
+      col_rep1, col_rep2 = st.columns(2)
+
+      with col_rep1:
+        st.markdown("### 🏗️ Desglose Total por Obra")
+        df_obra = (
+            df_rep.groupby("obra")["monto"].sum().reset_index()
+        )  # type: ignore
+        df_obra["Monto Total (Bs.)"] = df_obra["monto"].apply(
+            formatear_monto_venezuela
+        )
+        st.dataframe(
+            df_obra[["obra", "Monto Total (Bs.)"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+      with col_rep2:
+        st.markdown("### 💳 Desglose por Origen de los Fondos")
+        df_origen = (
+            df_rep.groupby("origen_fondos")["monto"].sum().reset_index()
+        )  # type: ignore
+        df_origen["Monto Total (Bs.)"] = df_origen["monto"].apply(
+            formatear_monto_venezuela
+        )
+        st.dataframe(
+            df_origen[["origen_fondos", "Monto Total (Bs.)"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+      st.markdown("---")
+      st.markdown("### 🔍 Resumen Cruzado (Obra y Origen)")
+      df_cruzado = (
+          df_rep.groupby(["obra", "origen_fondos"])["monto"].sum().reset_index()
+      )  # type: ignore
+      df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(
+          formatear_monto_venezuela
+      )
+      st.dataframe(
+          df_cruzado[["obra", "origen_fondos", "Monto Total (Bs.)"]],
+          use_container_width=True,
+          hide_index=True,
+      )
+
+    else:
+      st.info("No hay suficientes datos de gastos para generar reportes.")
+  except Exception as e:
+    st.error(f"Error generando reportes: {e}")
