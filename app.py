@@ -34,7 +34,6 @@ with col_top2:
 def formatear_monto_venezuela(valor):
   try:
     val_float = float(valor)
-    # Formato con coma decimal y punto de miles
     s = f"{val_float:,.2f}"
     s = s.replace(",", "X").replace(".", ",").replace("X", ".")
     return s
@@ -42,7 +41,7 @@ def formatear_monto_venezuela(valor):
     return "0,00"
 
 
-# --- PESTAÑAS PRINCIPALES (INCLUYENDO REPORTES) ---
+# --- PESTAÑAS PRINCIPALES ---
 tab_facturas, tab_tareas, tab_reportes = st.tabs(
     ["💰 Facturas y Gastos", "📋 Tareas Programadas", "📊 Reportes y Desglose"]
 )
@@ -97,14 +96,37 @@ with tab_facturas:
     else:
       obra_final = seleccion_obra.strip().upper()
 
-    # Nuevo campo: Origen de los fondos
-    origen_input = st.text_input(
-        "Origen de los Fondos", placeholder="Ej. BANCO, CAJA, CLIENTE..."
-    )
-    origen_final = origen_input.strip().upper()
+    # Obtener lista unificada de orígenes de fondos existentes desde las descripciones
+    try:
+      res_orig = supabase.table("registros").select("descripcion").execute()
+      lista_origenes = []
+      if res_orig.data:
+        for r in res_orig.data:
+          desc_str = str(r["descripcion"])
+          if desc_str.startswith("[") and "]" in desc_str:
+            orig = desc_str.split("]")[0].replace("[", "").strip()
+            if orig:
+              lista_origenes.append(orig)
+      lista_origenes_existentes = sorted(list(set(lista_origenes)))
+    except Exception:
+      lista_origenes_existentes = []
+
+    opciones_origen = lista_origenes_existentes + ["➕ Agregar nuevo origen..."]
+    seleccion_origen = st.selectbox("Origen de los Fondos", opciones_origen)
+
+    if seleccion_origen == "➕ Agregar nuevo origen...":
+      origen_input = st.text_input("Escribe el nuevo origen de fondos:")
+      origen_final = origen_input.strip().upper()
+    else:
+      origen_final = seleccion_origen.strip().upper()
 
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
+
+    # Selector de imagen o factura adjunta
+    archivo_adjunto = st.file_uploader(
+        "Adjuntar Recibo / Factura (Foto o Img)", type=["png", "jpg", "jpeg", "pdf"]
+    )
 
     submit_gasto = st.form_submit_button(
         label="Guardar Gasto", use_container_width=True
@@ -112,7 +134,6 @@ with tab_facturas:
 
     if submit_gasto:
       try:
-        # Reemplazar coma por punto para procesar cálculo matemático limpio
         monto_limpio = monto_str.replace(".", "").replace(",", ".")
         monto_val = float(monto_limpio)
       except ValueError:
@@ -122,24 +143,36 @@ with tab_facturas:
         st.sidebar.error("Verifica el monto y que la obra esté seleccionada.")
       else:
         try:
+          url_comprobante = ""
+          if archivo_adjunto is not None:
+            file_bytes = archivo_adjunto.getvalue()
+            file_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{archivo_adjunto.name}"
+            supabase.storage.from_("comprobantes").upload(
+                file_name, file_bytes, {"content-type": archivo_adjunto.type}
+            )
+            public_url_res = supabase.storage.from_("comprobantes").get_public_url(
+                file_name
+            )
+            url_comprobante = public_url_res
+
+          desc_completa = (
+              f"[{origen_final}] {descripcion_final}"
+              if origen_final
+              else descripcion_final
+          )
+
           data = {
               "fecha": fecha_gasto.strftime("%Y-%m-%d"),
               "monto": monto_val,
               "obra": obra_final,
-              "descripcion": (
-                  f"[{origen_final}] {descripcion_final}"
-                  if origen_final
-                  else descripcion_final
-              ),  # Guardamos el origen integrado o visible
-              "estado": "REGISTRADO",
+              "descripcion": desc_completa,
+              "estado": f"REGISTRADO|URL:{url_comprobante}" if url_comprobante else "REGISTRADO",
           }
-          # Si prefieres una columna independiente, asegúrate de tener la columna en supabase,
-          # o la adjuntamos limpiamente en la descripción como se estructuró arriba.
           supabase.table("registros").insert(data).execute()
           st.sidebar.success("¡Gasto guardado con éxito!")
           st.rerun()
         except Exception as e:
-          st.sidebar.error(f"Error al guardar: {e}")
+          st.sidebar.error(f"Error al guardar o subir archivo: {e}")
 
   st.subheader("📋 Resumen de Gastos y Facturas")
 
@@ -166,9 +199,23 @@ with tab_facturas:
       if "descripcion" in df.columns:
         df["descripcion"] = df["descripcion"].astype(str).str.upper()
 
-      # Aplicar formato visual venezolano de montos en la tabla
-      df_view = df.copy()
+      comprobantes_urls = []
+      estados_limpios = []
+      for est in df["estado"]:
+        if "URL:" in str(est):
+          partes = str(est).split("URL:")
+          estados_limpios.append(partes[0].strip("|"))
+          comprobantes_urls.append(partes[1])
+        else:
+          estados_limpios.append(est)
+          comprobantes_urls.append("")
+
+      df["estado_limpio"] = estados_limpios
+      df["comprobante_url"] = comprobantes_urls
+
+      df_view = df[["id", "fecha", "monto", "obra", "descripcion", "comprobante_url"]].copy()
       df_view["monto_fmt"] = df_view["monto"].apply(formatear_monto_venezuela)
+      df_view = df_view.drop(columns=["monto"])
 
       obras_disp = ["Todas"] + list(df_view["obra"].unique())
       obra_sel = st.selectbox(
@@ -188,11 +235,24 @@ with tab_facturas:
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      # Reorganizar columnas para mostrar el monto formateado
-      if "monto" in df_view.columns:
-        df_view = df_view.drop(columns=["monto"])
-
       st.dataframe(df_view, use_container_width=True)
+
+      st.markdown("### 🔍 Ver Comprobante Adjunto de un Gasto")
+      with st.expander("Abrir imagen o factura de pago"):
+        reg_con_foto = [r for r in rows if "URL:" in str(r["estado"])]
+        if reg_con_foto:
+          opciones_foto = {
+              f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {formatear_monto_venezuela(r['monto'])} ({str(r['descripcion']).upper()})"
+              : r["estado"].split("URL:")[1]
+              for r in reg_con_foto
+          }
+          sel_foto_key = st.selectbox("Selecciona el gasto para ver su recibo:", list(opciones_foto.keys()))
+          url_imagen = opciones_foto[sel_foto_key]
+          st.image(url_imagen, caption="Comprobante / Factura adjunta", use_container_width=True)
+          st.markdown(f"[🔗 Abrir imagen en pestaña completa]({url_imagen})")
+        else:
+          st.info("No hay gastos con comprobantes adjuntos en este momento.")
+
     else:
       st.info("No hay gastos registrados todavía.")
   except Exception as e:
@@ -237,7 +297,6 @@ with tab_tareas:
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
 
     with col_f1:
-      # Lista unificada de obras compartida con gastos
       try:
         res_obras_t = supabase.table("registros").select("obra").execute()
         lista_existente_t = (
@@ -396,7 +455,6 @@ with tab_reportes:
     if res_rep.data:
       df_rep = pd.DataFrame(res_rep.data)
 
-      # Extraer o identificar origen de fondos si está en la descripción (ej. [BANCO] ...)
       def extraer_origen(desc):
         desc_str = str(desc)
         if desc_str.startswith("[") and "]" in desc_str:
@@ -412,7 +470,7 @@ with tab_reportes:
         st.markdown("### 🏗️ Desglose Total por Obra")
         df_obra = (
             df_rep.groupby("obra")["monto"].sum().reset_index()
-        )  # type: ignore
+        )
         df_obra["Monto Total (Bs.)"] = df_obra["monto"].apply(
             formatear_monto_venezuela
         )
@@ -426,7 +484,7 @@ with tab_reportes:
         st.markdown("### 💳 Desglose por Origen de los Fondos")
         df_origen = (
             df_rep.groupby("origen_fondos")["monto"].sum().reset_index()
-        )  # type: ignore
+        )
         df_origen["Monto Total (Bs.)"] = df_origen["monto"].apply(
             formatear_monto_venezuela
         )
@@ -440,7 +498,7 @@ with tab_reportes:
       st.markdown("### 🔍 Resumen Cruzado (Obra y Origen)")
       df_cruzado = (
           df_rep.groupby(["obra", "origen_fondos"])["monto"].sum().reset_index()
-      )  # type: ignore
+      )
       df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(
           formatear_monto_venezuela
       )
