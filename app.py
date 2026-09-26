@@ -36,7 +36,6 @@ with tab_facturas:
   st.sidebar.header("➕ Nuevo Movimiento (Gasto)")
 
   with st.sidebar.form("form_gasto", clear_on_submit=True):
-    # Formato de fecha visible día/mes/año
     fecha_gasto = st.date_input(
         "Fecha (Día / Mes / Año)",
         value=datetime.now(),
@@ -80,7 +79,7 @@ with tab_facturas:
       else:
         try:
           data = {
-              "fecha": fecha_gasto.strftime("%d/%m/%Y"),  # Guardado en formato DD/MM/YYYY
+              "fecha": fecha_gasto.strftime("%Y-%m-%d"),  # Formato estándar para que la base de datos no falle
               "monto": monto_val,
               "obra": obra_final,
               "descripcion": descripcion,
@@ -98,7 +97,7 @@ with tab_facturas:
     response = (
         supabase.table("registros")
         .select("*")
-        .neq("estado", "TAREA")
+        .not_.like("estado", "TAREA_%")
         .order("id", desc=True)
         .execute()
     )
@@ -106,6 +105,12 @@ with tab_facturas:
 
     if rows:
       df = pd.DataFrame(rows)
+
+      # Formatear la fecha para verla como DD/MM/YYYY en la tabla
+      if "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime(
+            "%d/%m/%Y"
+        )
 
       obras_disp = ["Todas"] + list(df["obra"].unique())
       obra_sel = st.selectbox(
@@ -136,6 +141,7 @@ with tab_facturas:
       res_del = (
           supabase.table("registros")
           .select("id, obra, descripcion, monto")
+          .not_.like("estado", "TAREA_%")
           .execute()
       )
       if res_del.data:
@@ -160,18 +166,19 @@ with tab_facturas:
 
 
 # ==========================================
-# SECCIÓN 2: TAREAS PROGRAMADAS (ESTILO LISTA LIMPIA)
+# SECCIÓN 2: TAREAS PROGRAMADAS
 # ==========================================
 with tab_tareas:
   st.subheader("☑️ Lista de Tareas y Pendientes de Obra")
 
-  # Formulario rápido para agregar nueva tarea
   with st.form("form_tarea", clear_on_submit=True):
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
     with col_f1:
       t_obra = st.text_input("Obra / Destino", placeholder="Ej. Pdvsa")
     with col_f2:
-      t_desc = st.text_input("Descripción de la tarea", placeholder="Ej. Esmalte en columnas...")
+      t_desc = st.text_input(
+          "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
+      )
     with col_f3:
       t_estado = st.selectbox("Estado inicial", ["PENDIENTE", "LISTO"])
     with col_f4:
@@ -184,7 +191,7 @@ with tab_tareas:
       else:
         try:
           data_t = {
-              "fecha": datetime.now().strftime("%d/%m/%Y"),
+              "fecha": datetime.now().strftime("%Y-%m-%d"),
               "monto": 0.0,
               "obra": t_obra if t_obra else "General",
               "descripcion": t_desc,
@@ -198,7 +205,6 @@ with tab_tareas:
 
   st.markdown("---")
 
-  # Tabla de visualización al estilo limpio de la app móvil
   try:
     res_tareas = (
         supabase.table("registros")
@@ -207,50 +213,69 @@ with tab_tareas:
         .order("id", desc=True)
         .execute()
     )
-    
+
     if res_tareas.data:
-      # Preparamos los datos para mostrarlos en una tabla limpia de tipo lista
       lista_formateada = []
       for t in res_tareas.data:
         estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
         icono = "🔵" if estado_limpio == "LISTO" else "⏳"
+        
+        # Formatear fecha para la lista
+        fecha_fmt = t["fecha"]
+        try:
+          fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except Exception:
+          pass
+
         lista_formateada.append({
-            "ID": t["id"],
-            "OBRA": t["obra"],
-            "DESCRIPCIÓN": t["descripcion"],
-            "ESTADO": f"{icono} {estado_limpio}",
-            "FECHA": t["fecha"]
+            "id": t["id"],
+            "obra": t["obra"],
+            "descripcion": t["descripcion"],
+            "estado": f"{icono} {estado_limpio}",
+            "fecha": fecha_fmt,
         })
-      
+
       df_t = pd.DataFrame(lista_formateada)
-      
-      # Mostrar tabla limpia interactiva
-      st.dataframe(df_t[["DESCRIPCION", "ESTADO", "OBRA", "FECHA"]], use_container_width=True, hide_index=True)
+
+      # Mostrar tabla limpia
+      st.dataframe(
+          df_t[["descripcion", "estado", "obra", "fecha"]],
+          use_container_width=True,
+          hide_index=True,
+      )
 
       st.markdown("### ⚙️ Gestionar o Cambiar Estados Individuales")
-      
-      # Selector rápido para cambiar estado o borrar de forma muy cómoda
+
       opciones_tareas_gest = {
           f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {t['obra']} - {t['descripcion']} (ID: {t['id']})"
           : t
           for t in res_tareas.data
       }
-      
-      sel_gestion = st.selectbox("Selecciona una tarea para modificar o borrar:", list(opciones_tareas_gest.keys()))
+
+      sel_gestion = st.selectbox(
+          "Selecciona una tarea para modificar o borrar:",
+          list(opciones_tareas_gest.keys()),
+      )
       tarea_seleccionada = opciones_tareas_gest[sel_gestion]
-      
+
       col_btn1, col_btn2, col_btn3 = st.columns(3)
       with col_btn1:
         if st.button("🔄 Cambiar a PENDIENTE", use_container_width=True):
-          supabase.table("registros").update({"estado": "TAREA_PENDIENTE"}).eq("id", tarea_seleccionada["id"]).execute()
+          supabase.table("registros").update(
+              {"estado": "TAREA_PENDIENTE"}
+          ).eq("id", tarea_seleccionada["id"]).execute()
           st.rerun()
       with col_btn2:
         if st.button("✅ Cambiar a LISTO", use_container_width=True):
-          supabase.table("registros").update({"estado": "TAREA_LISTO"}).eq("id", tarea_seleccionada["id"]).execute()
+          supabase.table("registros").update({"estado": "TAREA_LISTO"}).eq(
+              "id", tarea_seleccionada["id"]
+          ).execute()
           st.rerun()
       with col_btn3:
         if st.button("🗑️ Eliminar Tarea", type="primary", use_container_width=True):
-          supabase.table("registros").delete().eq("id", tarea_seleccionada["id"]).execute()
+          supabase.table("registros").delete().eq(
+              "id", tarea_seleccionada["id"]
+          ).execute()
           st.rerun()
 
     else:
