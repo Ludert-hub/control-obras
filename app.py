@@ -42,7 +42,6 @@ with tab_facturas:
         format="DD/MM/YYYY",
     )
 
-    # Campo de texto optimizado para montos (sin ceros fijos molestos)
     monto_str = st.text_input(
         "Monto en Bs.",
         value="",
@@ -63,11 +62,13 @@ with tab_facturas:
     seleccion_obra = st.selectbox("Obra / Destino", opciones_obra)
 
     if seleccion_obra == "➕ Agregar nueva obra...":
-      obra_final = st.text_input("Escribe el nombre de la nueva obra:")
+      obra_input = st.text_input("Escribe el nombre de la nueva obra:")
+      obra_final = obra_input.strip().upper()
     else:
-      obra_final = seleccion_obra
+      obra_final = seleccion_obra.strip().upper()
 
-    descripcion = st.text_input("Descripción (Materiales, equipos...)")
+    descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
+    descripcion_final = descripcion_input.strip().upper()
 
     submit_gasto = st.form_submit_button(
         label="Guardar Gasto", use_container_width=True
@@ -87,7 +88,7 @@ with tab_facturas:
               "fecha": fecha_gasto.strftime("%Y-%m-%d"),
               "monto": monto_val,
               "obra": obra_final,
-              "descripcion": descripcion,
+              "descripcion": descripcion_final,
               "estado": "REGISTRADO",
           }
           supabase.table("registros").insert(data).execute()
@@ -115,6 +116,12 @@ with tab_facturas:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime(
             "%d/%m/%Y"
         )
+      
+      # Forzar mayúsculas en visualización del dataframe de gastos
+      if "obra" in df.columns:
+        df["obra"] = df["obra"].astype(str).str.upper()
+      if "descripcion" in df.columns:
+        df["descripcion"] = df["descripcion"].astype(str).str.upper()
 
       obras_disp = ["Todas"] + list(df["obra"].unique())
       obra_sel = st.selectbox(
@@ -150,7 +157,7 @@ with tab_facturas:
       )
       if res_del.data:
         opciones_del = {
-            f"ID {r['id']} - {r['obra']} - Bs. {r['monto']:,.2f} ({r['descripcion']})"
+            f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {r['monto']:,.2f} ({str(r['descripcion']).upper()})"
             : r["id"]
             for r in res_del.data
         }
@@ -179,11 +186,10 @@ with tab_tareas:
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
 
     with col_f1:
-      # Menú desplegable inteligente de obras también en tareas
       try:
         res_obras_t = supabase.table("registros").select("obra").execute()
         lista_existente_t = (
-            sorted(list(set([r["obra"] for r in res_obras_t.data if r["obra"]])))
+            sorted(list(set([str(r["obra"]).upper() for r in res_obras_t.data if r["obra"]])))
             if res_obras_t.data
             else []
         )
@@ -194,14 +200,17 @@ with tab_tareas:
       seleccion_obra_t = st.selectbox("Obra / Destino", opciones_obra_t, key="t_sel_obra")
 
       if seleccion_obra_t == "➕ Agregar nueva obra...":
-        t_obra_final = st.text_input("Nueva obra:")
+        t_obra_input = st.text_input("Nueva obra:")
+        t_obra_final = t_obra_input.strip().upper()
       else:
-        t_obra_final = seleccion_obra_t
+        t_obra_final = seleccion_obra_t.strip().upper()
 
     with col_f2:
-      t_desc = st.text_input(
+      t_desc_input = st.text_input(
           "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
       )
+      t_desc_final = t_desc_input.strip().upper()
+
     with col_f3:
       t_estado = st.selectbox("Estado inicial", ["PENDIENTE", "LISTO"])
     with col_f4:
@@ -209,7 +218,7 @@ with tab_tareas:
       btn_t = st.form_submit_button("➕ Agregar", use_container_width=True)
 
     if btn_t:
-      if not t_desc or not t_obra_final:
+      if not t_desc_final or not t_obra_final:
         st.error("La obra y la descripción de la tarea son obligatorias.")
       else:
         try:
@@ -217,7 +226,7 @@ with tab_tareas:
               "fecha": datetime.now().strftime("%Y-%m-%d"),
               "monto": 0.0,
               "obra": t_obra_final,
-              "descripcion": t_desc,
+              "descripcion": t_desc_final,
               "estado": f"TAREA_{t_estado}",
           }
           supabase.table("registros").insert(data_t).execute()
@@ -251,8 +260,8 @@ with tab_tareas:
 
         lista_formateada.append({
             "id": t["id"],
-            "obra": t["obra"],
-            "descripcion": t["descripcion"],
+            "obra": str(t["obra"]).upper(),
+            "descripcion": str(t["descripcion"]).upper(),
             "estado": f"{icono} {estado_limpio}",
             "fecha": fecha_fmt,
         })
@@ -268,7 +277,7 @@ with tab_tareas:
       st.markdown("### ⚙️ Gestionar o Cambiar Estados Individuales")
 
       opciones_tareas_gest = {
-          f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {t['obra']} - {t['descripcion']} (ID: {t['id']})"
+          f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {str(t['obra']).upper()} - {str(t['descripcion']).upper()} (ID: {t['id']})"
           : t
           for t in res_tareas.data
       }
