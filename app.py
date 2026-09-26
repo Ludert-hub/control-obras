@@ -23,7 +23,7 @@ supabase = init_supabase()
 st.title("🏗️ Control de Obras y Materiales")
 st.markdown("Sistema sincronizado en tiempo real (PC y Teléfonos).")
 
-# --- CREACIÓN DE TESTAÑAS (PESTAÑAS PRINCIPALES) ---
+# --- PESTAÑAS PRINCIPALES ---
 tab_facturas, tab_tareas = st.tabs(
     ["💰 Facturas y Gastos", "📋 Tareas Programadas"]
 )
@@ -33,21 +33,18 @@ tab_facturas, tab_tareas = st.tabs(
 # SECCIÓN 1: FACTURAS Y GASTOS
 # ==========================================
 with tab_facturas:
-  # Sidebar exclusivo para el formulario de Gastos
   st.sidebar.header("➕ Nuevo Movimiento (Gasto)")
 
   with st.sidebar.form("form_gasto", clear_on_submit=True):
-    # 1. Fecha formateada visualmente amigable
-    fecha_gasto = st.date_input("Fecha", value=datetime.now())
-
-    # 2. Monto (campo optimizado para evitar ceros molestos)
-    monto_str = st.text_input(
-        "Monto en Bs.",
-        value="0.00",
-        help="Escribe la cifra directamente.",
+    # Formato de fecha visible día/mes/año
+    fecha_gasto = st.date_input(
+        "Fecha (Día / Mes / Año)",
+        value=datetime.now(),
+        format="DD/MM/YYYY",
     )
 
-    # 3. Menú desplegable de Obras existentes + Opción de crear nueva
+    monto_str = st.text_input("Monto en Bs.", value="0.00")
+
     try:
       res_obras = supabase.table("registros").select("obra").execute()
       lista_existente = (
@@ -83,11 +80,11 @@ with tab_facturas:
       else:
         try:
           data = {
-              "fecha": str(fecha_gasto),
+              "fecha": fecha_gasto.strftime("%d/%m/%Y"),  # Guardado en formato DD/MM/YYYY
               "monto": monto_val,
               "obra": obra_final,
               "descripcion": descripcion,
-              "estado": "REGISTRADO",  # Sin estados molestos en facturas
+              "estado": "REGISTRADO",
           }
           supabase.table("registros").insert(data).execute()
           st.sidebar.success("¡Gasto guardado con éxito!")
@@ -95,7 +92,6 @@ with tab_facturas:
         except Exception as e:
           st.sidebar.error(f"Error al guardar: {e}")
 
-  # Visualización de Gastos
   st.subheader("📋 Resumen de Gastos y Facturas")
 
   try:
@@ -111,9 +107,10 @@ with tab_facturas:
     if rows:
       df = pd.DataFrame(rows)
 
-      # Filtro rápido por Obra
       obras_disp = ["Todas"] + list(df["obra"].unique())
-      obra_sel = st.selectbox("Filtrar gastos por Obra:", obras_disp, key="filtro_gasto")
+      obra_sel = st.selectbox(
+          "Filtrar gastos por Obra:", obras_disp, key="filtro_gasto"
+      )
 
       if obra_sel != "Todas":
         df = df[df["obra"] == obra_sel]
@@ -134,7 +131,6 @@ with tab_facturas:
   except Exception as e:
     st.error(f"Error al cargar datos: {e}")
 
-  # Sección para eliminar gastos
   with st.expander("🗑️ Eliminar un gasto registrado"):
     try:
       res_del = (
@@ -164,87 +160,100 @@ with tab_facturas:
 
 
 # ==========================================
-# SECCIÓN 2: TAREAS PROGRAMADAS (PENDIENTE / LISTO)
+# SECCIÓN 2: TAREAS PROGRAMADAS (ESTILO LISTA LIMPIA)
 # ==========================================
 with tab_tareas:
-  st.subheader("☑️ Gestión de Tareas Programadas de Obra")
+  st.subheader("☑️ Lista de Tareas y Pendientes de Obra")
 
-  col1, col2 = st.columns([1, 2])
-
-  with col1:
-    st.markdown("### Nueva Tarea")
-    with st.form("form_tarea", clear_on_submit=True):
-      t_obra = st.text_input("Obra asociada")
-      t_desc = st.text_input("Descripción de la tarea")
+  # Formulario rápido para agregar nueva tarea
+  with st.form("form_tarea", clear_on_submit=True):
+    col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
+    with col_f1:
+      t_obra = st.text_input("Obra / Destino", placeholder="Ej. Pdvsa")
+    with col_f2:
+      t_desc = st.text_input("Descripción de la tarea", placeholder="Ej. Esmalte en columnas...")
+    with col_f3:
       t_estado = st.selectbox("Estado inicial", ["PENDIENTE", "LISTO"])
+    with col_f4:
+      st.write("")
+      btn_t = st.form_submit_button("➕ Agregar", use_container_width=True)
 
-      btn_t = st.form_submit_button(
-          "Agregar Tarea", use_container_width=True
-      )
-      if btn_t:
-        if not t_desc:
-          st.error("Escribe la descripción de la tarea.")
-        else:
-          try:
-            data_t = {
-                "fecha": str(datetime.now().strftime("%Y-%m-%d")),
-                "monto": 0.0,
-                "obra": t_obra if t_obra else "General",
-                "descripcion": t_desc,
-                "estado": f"TAREA_{t_estado}",  # Identificador para separarlas
-            }
-            supabase.table("registros").insert(data_t).execute()
-            st.success("¡Tarea creada!")
-            st.rerun()
-          except Exception as e:
-            st.error(f"Error: {e}")
-
-  with col2:
-    st.markdown("### Listado de Tareas Activas")
-    try:
-      res_tareas = (
-          supabase.table("registros")
-          .select("*")
-          .like("estado", "TAREA_%")
-          .order("id", desc=True)
-          .execute()
-      )
-      if res_tareas.data:
-        for t in res_tareas.data:
-          # Limpiar etiqueta visual del estado
-          estado_limpio = (
-              "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
-          )
-          color_badge = "🟢" if estado_limpio == "LISTO" else "🟠"
-
-          with st.container(border=True):
-            st.write(
-                f"**Obra:** {t['obra']} | **Tarea:** {t['descripcion']}"
-            )
-            col_a, col_b = st.columns(2)
-            with col_a:
-              st.write(f"Estado actual: {color_badge} **{estado_limpio}**")
-            with col_b:
-              nuevo_est = st.selectbox(
-                  "Cambiar",
-                  ["PENDIENTE", "LISTO"],
-                  index=0 if estado_limpio == "PENDIENTE" else 1,
-                  key=f"st_{t['id']}",
-              )
-              if st.button("Actualizar Estado", key=f"btn_{t['id']}"):
-                nuevo_val = f"TAREA_{nuevo_est}"
-                supabase.table("registros").update({"estado": nuevo_val}).eq(
-                    "id", t["id"]
-                ).execute()
-                st.success("¡Estado actualizado!")
-                st.rerun()
-
-              if st.button("🗑️ Borrar Tarea", key=f"del_t_{t['id']}"):
-                supabase.table("registros").delete().eq(
-                    "id", t["id"]
-                ).execute()
-                st.rerun()
+    if btn_t:
+      if not t_desc:
+        st.error("La descripción de la tarea es obligatoria.")
       else:
-        st.info("No hay tareas programadas registradas.")
-    except Exception as e:
-      st.error(f"Error cargando tareas: {e}")
+        try:
+          data_t = {
+              "fecha": datetime.now().strftime("%d/%m/%Y"),
+              "monto": 0.0,
+              "obra": t_obra if t_obra else "General",
+              "descripcion": t_desc,
+              "estado": f"TAREA_{t_estado}",
+          }
+          supabase.table("registros").insert(data_t).execute()
+          st.success("¡Tarea añadida!")
+          st.rerun()
+        except Exception as e:
+          st.error(f"Error: {e}")
+
+  st.markdown("---")
+
+  # Tabla de visualización al estilo limpio de la app móvil
+  try:
+    res_tareas = (
+        supabase.table("registros")
+        .select("*")
+        .like("estado", "TAREA_%")
+        .order("id", desc=True)
+        .execute()
+    )
+    
+    if res_tareas.data:
+      # Preparamos los datos para mostrarlos en una tabla limpia de tipo lista
+      lista_formateada = []
+      for t in res_tareas.data:
+        estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
+        icono = "🔵" if estado_limpio == "LISTO" else "⏳"
+        lista_formateada.append({
+            "ID": t["id"],
+            "OBRA": t["obra"],
+            "DESCRIPCIÓN": t["descripcion"],
+            "ESTADO": f"{icono} {estado_limpio}",
+            "FECHA": t["fecha"]
+        })
+      
+      df_t = pd.DataFrame(lista_formateada)
+      
+      # Mostrar tabla limpia interactiva
+      st.dataframe(df_t[["DESCRIPCION", "ESTADO", "OBRA", "FECHA"]], use_container_width=True, hide_index=True)
+
+      st.markdown("### ⚙️ Gestionar o Cambiar Estados Individuales")
+      
+      # Selector rápido para cambiar estado o borrar de forma muy cómoda
+      opciones_tareas_gest = {
+          f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {t['obra']} - {t['descripcion']} (ID: {t['id']})"
+          : t
+          for t in res_tareas.data
+      }
+      
+      sel_gestion = st.selectbox("Selecciona una tarea para modificar o borrar:", list(opciones_tareas_gest.keys()))
+      tarea_seleccionada = opciones_tareas_gest[sel_gestion]
+      
+      col_btn1, col_btn2, col_btn3 = st.columns(3)
+      with col_btn1:
+        if st.button("🔄 Cambiar a PENDIENTE", use_container_width=True):
+          supabase.table("registros").update({"estado": "TAREA_PENDIENTE"}).eq("id", tarea_seleccionada["id"]).execute()
+          st.rerun()
+      with col_btn2:
+        if st.button("✅ Cambiar a LISTO", use_container_width=True):
+          supabase.table("registros").update({"estado": "TAREA_LISTO"}).eq("id", tarea_seleccionada["id"]).execute()
+          st.rerun()
+      with col_btn3:
+        if st.button("🗑️ Eliminar Tarea", type="primary", use_container_width=True):
+          supabase.table("registros").delete().eq("id", tarea_seleccionada["id"]).execute()
+          st.rerun()
+
+    else:
+      st.info("No hay tareas programadas registradas en este momento.")
+  except Exception as e:
+    st.error(f"Error cargando tareas: {e}")
