@@ -66,59 +66,18 @@ with tab_facturas:
         placeholder="Ej. 1500,50",
     )
 
-    # Obtener lista unificada de obras existentes
-    try:
-      res_obras = supabase.table("registros").select("obra").execute()
-      lista_existente = (
-          sorted(
-              list(
-                  set(
-                      [
-                          str(r["obra"]).upper()
-                          for r in res_obras.data
-                          if r["obra"]
-                      ]
-                  )
-              )
-          )
-          if res_obras.data
-          else []
-      )
-    except Exception:
-      lista_existente = []
+    # Campo de texto libre para la obra (rápido y sin bloqueos en el tlf)
+    obra_input = st.text_input(
+        "Obra / Destino",
+        placeholder="Ej. ESOBADES o escribe una nueva",
+    )
+    obra_final = obra_input.strip().upper()
 
-    opciones_obra = lista_existente + ["➕ Agregar nueva obra..."]
-    seleccion_obra = st.selectbox("Obra / Destino", opciones_obra)
-
-    if seleccion_obra == "➕ Agregar nueva obra...":
-      obra_input = st.text_input("Escribe el nombre de la nueva obra:")
-      obra_final = obra_input.strip().upper()
-    else:
-      obra_final = seleccion_obra.strip().upper()
-
-    # Obtener lista unificada de orígenes de fondos existentes desde las descripciones
-    try:
-      res_orig = supabase.table("registros").select("descripcion").execute()
-      lista_origenes = []
-      if res_orig.data:
-        for r in res_orig.data:
-          desc_str = str(r["descripcion"])
-          if desc_str.startswith("[") and "]" in desc_str:
-            orig = desc_str.split("]")[0].replace("[", "").strip()
-            if orig:
-              lista_origenes.append(orig)
-      lista_origenes_existentes = sorted(list(set(lista_origenes)))
-    except Exception:
-      lista_origenes_existentes = []
-
-    opciones_origen = lista_origenes_existentes + ["➕ Agregar nuevo origen..."]
-    seleccion_origen = st.selectbox("Origen de los Fondos", opciones_origen)
-
-    if seleccion_origen == "➕ Agregar nuevo origen...":
-      origen_input = st.text_input("Escribe el nuevo origen de fondos:")
-      origen_final = origen_input.strip().upper()
-    else:
-      origen_final = seleccion_origen.strip().upper()
+    # Campo de texto libre para el origen de fondos
+    origen_input = st.text_input(
+        "Origen de los Fondos", placeholder="Ej. BANCO, CAJA, CLIENTE..."
+    )
+    origen_final = origen_input.strip().upper()
 
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
@@ -140,7 +99,7 @@ with tab_facturas:
         monto_val = 0.0
 
       if not obra_final or monto_val <= 0:
-        st.sidebar.error("Verifica el monto y que la obra esté seleccionada.")
+        st.sidebar.error("Verifica el monto y escribe el nombre de la obra.")
       else:
         try:
           url_comprobante = ""
@@ -297,43 +256,13 @@ with tab_tareas:
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
 
     with col_f1:
-      try:
-        res_obras_t = supabase.table("registros").select("obra").execute()
-        lista_existente_t = (
-            sorted(
-                list(
-                    set(
-                        [
-                            str(r["obra"]).upper()
-                            for r in res_obras_t.data
-                            if r["obra"]
-                        ]
-                    )
-                )
-            )
-            if res_obras_t.data
-            else []
-        )
-      except Exception:
-        lista_existente_t = []
-
-      opciones_obra_t = lista_existente_t + ["➕ Agregar nueva obra..."]
-      seleccion_obra_t = st.selectbox(
-          "Obra / Destino", opciones_obra_t, key="t_sel_obra"
-      )
-
-      if seleccion_obra_t == "➕ Agregar nueva obra...":
-        t_obra_input = st.text_input("Nueva obra:")
-        t_obra_final = t_obra_input.strip().upper()
-      else:
-        t_obra_final = seleccion_obra_t.strip().upper()
-
+      t_obra_input = st.text_input("Obra / Destino", placeholder="Ej. ESOBADES")
+      t_obra_final = t_obra_input.strip().upper()
     with col_f2:
       t_desc_input = st.text_input(
           "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
       )
       t_desc_final = t_desc_input.strip().upper()
-
     with col_f3:
       t_estado = st.selectbox("Estado inicial", ["PENDIENTE", "LISTO"])
     with col_f4:
@@ -485,6 +414,7 @@ with tab_reportes:
         df_origen = (
             df_rep.groupby("origen_fondos")["monto"].sum().reset_index()
         )
+        df_origen["Monto Total (Bs.)"]->str # type: ignore
         df_origen["Monto Total (Bs.)"] = df_origen["monto"].apply(
             formatear_monto_venezuela
         )
