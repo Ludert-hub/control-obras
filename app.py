@@ -60,15 +60,14 @@ with tab_facturas:
         format="DD/MM/YYYY",
     )
 
-    # Campo numérico para activar el teclado numérico en el teléfono
-    monto_val_input = st.number_input(
+    # Monto en texto libre optimizado (sin ceros molestos para borrar)
+    monto_str = st.text_input(
         "Monto en Bs.",
-        min_value=0.0,
-        step=0.01,
-        format="%.2f",
+        value="",
+        placeholder="Ej. 1500,50",
     )
 
-    # Menú desplegable inteligente de Obras
+    # --- SELECTOR DE OBRA ---
     try:
       res_obras = supabase.table("registros").select("obra").execute()
       lista_existente = (
@@ -89,16 +88,16 @@ with tab_facturas:
     except Exception:
       lista_existente = []
 
-    opciones_obra = lista_existente + ["➕ AGREGAR NUEVA OBRA..."]
+    opciones_obra = ["-- SELECCIONAR OBRA --"] + lista_existente + ["➕ OTRA OBRA NUEVA..."]
     seleccion_obra = st.selectbox("Obra / Destino", opciones_obra)
 
-    if seleccion_obra == "➕ AGREGAR NUEVA OBRA...":
-      obra_input = st.text_input("Escribe el nombre de la nueva obra:")
-      obra_final = obra_input.strip().upper()
+    if seleccion_obra == "➕ OTRA OBRA NUEVA...":
+      obra_nueva_input = st.text_input("Escribe el nombre de la NUEVA obra:")
+      obra_final = obra_nueva_input.strip().upper()
     else:
-      obra_final = seleccion_obra.strip().upper()
+      obra_final = "" if seleccion_obra == "-- SELECCIONAR OBRA --" else seleccion_obra.strip().upper()
 
-    # Menú desplegable inteligente de Origen de Fondos
+    # --- SELECTOR DE ORIGEN DE FONDOS ---
     try:
       res_orig = supabase.table("registros").select("descripcion").execute()
       lista_origenes = []
@@ -113,14 +112,14 @@ with tab_facturas:
     except Exception:
       lista_origenes_existentes = []
 
-    opciones_origen = lista_origenes_existentes + ["➕ AGREGAR NUEVO ORIGEN..."]
+    opciones_origen = ["-- SELECCIONAR ORIGEN --"] + lista_origenes_existentes + ["➕ OTRO ORIGEN NUEVO..."]
     seleccion_origen = st.selectbox("Origen de los Fondos", opciones_origen)
 
-    if seleccion_origen == "➕ AGREGAR NUEVO ORIGEN...":
-      origen_input = st.text_input("Escribe el nuevo origen de fondos:")
-      origen_final = origen_input.strip().upper()
+    if seleccion_origen == "➕ OTRO ORIGEN NUEVO...":
+      origen_nuevo_input = st.text_input("Escribe el NUEVO origen de fondos:")
+      origen_final = origen_nuevo_input.strip().upper()
     else:
-      origen_final = seleccion_origen.strip().upper()
+      origen_final = "" if seleccion_origen == "-- SELECCIONAR ORIGEN --" else seleccion_origen.strip().upper()
 
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
@@ -135,8 +134,14 @@ with tab_facturas:
     )
 
     if submit_gasto:
-      if not obra_final or monto_val_input <= 0:
-        st.sidebar.error("Verifica el monto y selecciona una obra válida.")
+      try:
+        monto_limpio = monto_str.replace(".", "").replace(",", ".")
+        monto_val = float(monto_limpio)
+      except ValueError:
+        monto_val = 0.0
+
+      if not obra_final or monto_val <= 0:
+        st.sidebar.error("Verifica el monto y selecciona o escribe una obra válida.")
       else:
         try:
           url_comprobante = ""
@@ -159,7 +164,7 @@ with tab_facturas:
 
           data = {
               "fecha": fecha_gasto.strftime("%Y-%m-%d"),
-              "monto": float(monto_val_input),
+              "monto": monto_val,
               "obra": obra_final,
               "descripcion": desc_completa,
               "estado": f"REGISTRADO|URL:{url_comprobante}" if url_comprobante else "REGISTRADO",
@@ -313,16 +318,16 @@ with tab_tareas:
       except Exception:
         lista_existente_t = []
 
-      opciones_obra_t = lista_existente_t + ["➕ AGREGAR NUEVA OBRA..."]
+      opciones_obra_t = ["-- SELECCIONAR --"] + lista_existente_t + ["➕ OTRA NUEVA..."]
       seleccion_obra_t = st.selectbox(
           "Obra / Destino", opciones_obra_t, key="t_sel_obra"
       )
 
-      if seleccion_obra_t == "➕ AGREGAR NUEVA OBRA...":
-        t_obra_input = st.text_input("Nueva obra:")
-        t_obra_final = t_obra_input.strip().upper()
+      if seleccion_obra_t == "➕ OTRA NUEVA...":
+        t_obra_nueva_input = st.text_input("Nueva obra:")
+        t_obra_final = t_obra_nueva_input.strip().upper()
       else:
-        t_obra_final = seleccion_obra_t.strip().upper()
+        t_obra_final = "" if seleccion_obra_t == "-- SELECCIONAR --" else seleccion_obra_t.strip().upper()
 
     with col_f2:
       t_desc_input = st.text_input(
