@@ -66,14 +66,12 @@ with tab_facturas:
         placeholder="Ej. 1500,50",
     )
 
-    # Campo de texto libre para la obra (rápido y sin bloqueos en el tlf)
     obra_input = st.text_input(
         "Obra / Destino",
         placeholder="Ej. ESOBADES o escribe una nueva",
     )
     obra_final = obra_input.strip().upper()
 
-    # Campo de texto libre para el origen de fondos
     origen_input = st.text_input(
         "Origen de los Fondos", placeholder="Ej. BANCO, CAJA, CLIENTE..."
     )
@@ -82,7 +80,6 @@ with tab_facturas:
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
 
-    # Selector de imagen o factura adjunta
     archivo_adjunto = st.file_uploader(
         "Adjuntar Recibo / Factura (Foto o Img)", type=["png", "jpg", "jpeg", "pdf"]
     )
@@ -414,7 +411,6 @@ with tab_reportes:
         df_origen = (
             df_rep.groupby("origen_fondos")["monto"].sum().reset_index()
         )
-        df_origen["Monto Total (Bs.)"]->str # type: ignore
         df_origen["Monto Total (Bs.)"] = df_origen["monto"].apply(
             formatear_monto_venezuela
         )
