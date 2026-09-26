@@ -42,7 +42,12 @@ with tab_facturas:
         format="DD/MM/YYYY",
     )
 
-    monto_str = st.text_input("Monto en Bs.", value="0.00")
+    # Campo de texto optimizado para montos (sin ceros fijos molestos)
+    monto_str = st.text_input(
+        "Monto en Bs.",
+        value="",
+        placeholder="Ej. 1500",
+    )
 
     try:
       res_obras = supabase.table("registros").select("obra").execute()
@@ -79,7 +84,7 @@ with tab_facturas:
       else:
         try:
           data = {
-              "fecha": fecha_gasto.strftime("%Y-%m-%d"),  # Formato estándar para que la base de datos no falle
+              "fecha": fecha_gasto.strftime("%Y-%m-%d"),
               "monto": monto_val,
               "obra": obra_final,
               "descripcion": descripcion,
@@ -106,7 +111,6 @@ with tab_facturas:
     if rows:
       df = pd.DataFrame(rows)
 
-      # Formatear la fecha para verla como DD/MM/YYYY en la tabla
       if "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime(
             "%d/%m/%Y"
@@ -173,8 +177,27 @@ with tab_tareas:
 
   with st.form("form_tarea", clear_on_submit=True):
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
+
     with col_f1:
-      t_obra = st.text_input("Obra / Destino", placeholder="Ej. Pdvsa")
+      # Menú desplegable inteligente de obras también en tareas
+      try:
+        res_obras_t = supabase.table("registros").select("obra").execute()
+        lista_existente_t = (
+            sorted(list(set([r["obra"] for r in res_obras_t.data if r["obra"]])))
+            if res_obras_t.data
+            else []
+        )
+      except Exception:
+        lista_existente_t = []
+
+      opciones_obra_t = lista_existente_t + ["➕ Agregar nueva obra..."]
+      seleccion_obra_t = st.selectbox("Obra / Destino", opciones_obra_t, key="t_sel_obra")
+
+      if seleccion_obra_t == "➕ Agregar nueva obra...":
+        t_obra_final = st.text_input("Nueva obra:")
+      else:
+        t_obra_final = seleccion_obra_t
+
     with col_f2:
       t_desc = st.text_input(
           "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
@@ -186,14 +209,14 @@ with tab_tareas:
       btn_t = st.form_submit_button("➕ Agregar", use_container_width=True)
 
     if btn_t:
-      if not t_desc:
-        st.error("La descripción de la tarea es obligatoria.")
+      if not t_desc or not t_obra_final:
+        st.error("La obra y la descripción de la tarea son obligatorias.")
       else:
         try:
           data_t = {
               "fecha": datetime.now().strftime("%Y-%m-%d"),
               "monto": 0.0,
-              "obra": t_obra if t_obra else "General",
+              "obra": t_obra_final,
               "descripcion": t_desc,
               "estado": f"TAREA_{t_estado}",
           }
@@ -220,7 +243,6 @@ with tab_tareas:
         estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
         icono = "🔵" if estado_limpio == "LISTO" else "⏳"
         
-        # Formatear fecha para la lista
         fecha_fmt = t["fecha"]
         try:
           fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -237,7 +259,6 @@ with tab_tareas:
 
       df_t = pd.DataFrame(lista_formateada)
 
-      # Mostrar tabla limpia
       st.dataframe(
           df_t[["descripcion", "estado", "obra", "fecha"]],
           use_container_width=True,
