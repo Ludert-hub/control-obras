@@ -60,26 +60,72 @@ with tab_facturas:
         format="DD/MM/YYYY",
     )
 
-    monto_str = st.text_input(
+    # Campo numérico para activar el teclado numérico en el teléfono
+    monto_val_input = st.number_input(
         "Monto en Bs.",
-        value="",
-        placeholder="Ej. 1500,50",
+        min_value=0.0,
+        step=0.01,
+        format="%.2f",
     )
 
-    obra_input = st.text_input(
-        "Obra / Destino",
-        placeholder="Ej. ESOBADES o escribe una nueva",
-    )
-    obra_final = obra_input.strip().upper()
+    # Menú desplegable inteligente de Obras
+    try:
+      res_obras = supabase.table("registros").select("obra").execute()
+      lista_existente = (
+          sorted(
+              list(
+                  set(
+                      [
+                          str(r["obra"]).upper()
+                          for r in res_obras.data
+                          if r["obra"]
+                      ]
+                  )
+              )
+          )
+          if res_obras.data
+          else []
+      )
+    except Exception:
+      lista_existente = []
 
-    origen_input = st.text_input(
-        "Origen de los Fondos", placeholder="Ej. BANCO, CAJA, CLIENTE..."
-    )
-    origen_final = origen_input.strip().upper()
+    opciones_obra = lista_existente + ["➕ AGREGAR NUEVA OBRA..."]
+    seleccion_obra = st.selectbox("Obra / Destino", opciones_obra)
+
+    if seleccion_obra == "➕ AGREGAR NUEVA OBRA...":
+      obra_input = st.text_input("Escribe el nombre de la nueva obra:")
+      obra_final = obra_input.strip().upper()
+    else:
+      obra_final = seleccion_obra.strip().upper()
+
+    # Menú desplegable inteligente de Origen de Fondos
+    try:
+      res_orig = supabase.table("registros").select("descripcion").execute()
+      lista_origenes = []
+      if res_orig.data:
+        for r in res_orig.data:
+          desc_str = str(r["descripcion"])
+          if desc_str.startswith("[") and "]" in desc_str:
+            orig = desc_str.split("]")[0].replace("[", "").strip()
+            if orig:
+              lista_origenes.append(orig)
+      lista_origenes_existentes = sorted(list(set(lista_origenes)))
+    except Exception:
+      lista_origenes_existentes = []
+
+    opciones_origen = lista_origenes_existentes + ["➕ AGREGAR NUEVO ORIGEN..."]
+    seleccion_origen = st.selectbox("Origen de los Fondos", opciones_origen)
+
+    if seleccion_origen == "➕ AGREGAR NUEVO ORIGEN...":
+      origen_input = st.text_input("Escribe el nuevo origen de fondos:")
+      origen_final = origen_input.strip().upper()
+    else:
+      origen_final = seleccion_origen.strip().upper()
 
     descripcion_input = st.text_input("Descripción (Materiales, equipos...)")
     descripcion_final = descripcion_input.strip().upper()
 
+    # Selector de imagen o factura adjunta
     archivo_adjunto = st.file_uploader(
         "Adjuntar Recibo / Factura (Foto o Img)", type=["png", "jpg", "jpeg", "pdf"]
     )
@@ -89,14 +135,8 @@ with tab_facturas:
     )
 
     if submit_gasto:
-      try:
-        monto_limpio = monto_str.replace(".", "").replace(",", ".")
-        monto_val = float(monto_limpio)
-      except ValueError:
-        monto_val = 0.0
-
-      if not obra_final or monto_val <= 0:
-        st.sidebar.error("Verifica el monto y escribe el nombre de la obra.")
+      if not obra_final or monto_val_input <= 0:
+        st.sidebar.error("Verifica el monto y selecciona una obra válida.")
       else:
         try:
           url_comprobante = ""
@@ -119,7 +159,7 @@ with tab_facturas:
 
           data = {
               "fecha": fecha_gasto.strftime("%Y-%m-%d"),
-              "monto": monto_val,
+              "monto": float(monto_val_input),
               "obra": obra_final,
               "descripcion": desc_completa,
               "estado": f"REGISTRADO|URL:{url_comprobante}" if url_comprobante else "REGISTRADO",
@@ -253,8 +293,37 @@ with tab_tareas:
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 3, 2, 1])
 
     with col_f1:
-      t_obra_input = st.text_input("Obra / Destino", placeholder="Ej. ESOBADES")
-      t_obra_final = t_obra_input.strip().upper()
+      try:
+        res_obras_t = supabase.table("registros").select("obra").execute()
+        lista_existente_t = (
+            sorted(
+                list(
+                    set(
+                        [
+                            str(r["obra"]).upper()
+                            for r in res_obras_t.data
+                            if r["obra"]
+                        ]
+                    )
+                )
+            )
+            if res_obras_t.data
+            else []
+        )
+      except Exception:
+        lista_existente_t = []
+
+      opciones_obra_t = lista_existente_t + ["➕ AGREGAR NUEVA OBRA..."]
+      seleccion_obra_t = st.selectbox(
+          "Obra / Destino", opciones_obra_t, key="t_sel_obra"
+      )
+
+      if seleccion_obra_t == "➕ AGREGAR NUEVA OBRA...":
+        t_obra_input = st.text_input("Nueva obra:")
+        t_obra_final = t_obra_input.strip().upper()
+      else:
+        t_obra_final = seleccion_obra_t.strip().upper()
+
     with col_f2:
       t_desc_input = st.text_input(
           "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
