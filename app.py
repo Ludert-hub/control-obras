@@ -53,13 +53,14 @@ tab_facturas, tab_tareas, tab_reportes = st.tabs(
 with tab_facturas:
   st.sidebar.header("➕ Nuevo Movimiento (Gasto)")
 
+  # Formulario libre (sin st.form) para que la interfaz reaccione de inmediato
   fecha_gasto = st.sidebar.date_input(
       "Fecha (Día / Mes / Año)",
       value=datetime.now(),
       format="DD/MM/YYYY",
   )
 
-  # Campo numérico que activa el teclado del teléfono y arranca completamente vacío
+  # Campo numérico que activa el teclado del teléfono y arranca vacío
   monto_input = st.sidebar.number_input(
       "Monto en Bs.",
       min_value=0.0,
