@@ -53,7 +53,6 @@ tab_facturas, tab_tareas, tab_reportes = st.tabs(
 with tab_facturas:
   st.sidebar.header("➕ Nuevo Movimiento (Gasto)")
 
-  # Formulario libre (sin st.form) para que la interfaz reaccione de inmediato
   fecha_gasto = st.sidebar.date_input(
       "Fecha (Día / Mes / Año)",
       value=datetime.now(),
@@ -350,10 +349,12 @@ with tab_tareas:
   st.markdown("---")
 
   try:
+    # DOBLE ORDENAMIENTO DE LA BASE DE DATOS: Agrupa por Estado, luego por ID (del más nuevo al más viejo)
     res_tareas = (
         supabase.table("registros")
         .select("*")
         .like("estado", "TAREA_%")
+        .order("estado", desc=True)
         .order("id", desc=True)
         .execute()
     )
