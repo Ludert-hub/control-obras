@@ -396,6 +396,8 @@ with tab_reportes:
 
       # Mostrar tabla preliminar
       df_mostrar = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].copy()
+      if "fecha" in df_mostrar.columns:
+          df_mostrar["fecha"] = pd.to_datetime(df_mostrar["fecha"], errors="coerce").dt.strftime("%d/%m/%Y")
       df_mostrar["monto"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
       st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
@@ -409,7 +411,7 @@ with tab_reportes:
         # Generar CSV con formato compatible con Excel Latino (separador ; y BOM utf-8)
         csv_data = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].to_csv(index=False, sep=';', encoding='utf-8-sig')
         st.download_button(
-            label="📥 Descargar Reporte (Excel/CSV)",
+            label="📥 Descargar Reporte en Excel (CSV)",
             data=csv_data,
             file_name=f"Reporte_{filtro_obra}_{filtro_origen}.csv",
             mime="text/csv",
@@ -417,14 +419,24 @@ with tab_reportes:
         )
         
       with col_btn_exp2:
-        # Generar enlace automático a WhatsApp
-        mensaje_wa = f"📊 *Reporte de Gastos*\n🏗️ Obra: {filtro_obra}\n💳 Origen: {filtro_origen}\n💰 *Total: Bs. {formatear_monto_venezuela(total_filtrado)}*\n\n_Generado desde la App de Control de Obras_"
+        # Generar texto detallado para WhatsApp incluyendo la cuadrilla
+        mensaje_wa = f"📊 *Reporte de Gastos*\n🏗️ Obra: {filtro_obra}\n💳 Origen: {filtro_origen}\n\n*Detalle de movimientos:*\n"
+        
+        # Iterar sobre las filas filtradas para agregarlas al mensaje de WhatsApp
+        for _, fila in df_filtrado.iterrows():
+            fecha_str = pd.to_datetime(fila['fecha']).strftime("%d/%m/%Y") if pd.notnull(fila['fecha']) else ""
+            desc_str = fila['descripcion']
+            monto_str = formatear_monto_venezuela(fila['monto'])
+            mensaje_wa += f"🔸 {fecha_str} - {desc_str}: Bs. {monto_str}\n"
+            
+        mensaje_wa += f"\n💰 *Total: Bs. {formatear_monto_venezuela(total_filtrado)}*"
+        
         url_wa = f"https://wa.me/?text={urllib.parse.quote(mensaje_wa)}"
         
         # Botón estilizado tipo WhatsApp
         boton_wa_html = f"""
         <a href="{url_wa}" target="_blank" style="display: block; text-align: center; background-color: #25D366; color: white; padding: 10px; border-radius: 5px; text-decoration: none; font-weight: bold; border: 1px solid #1DA851;">
-          📲 Enviar Resumen por WhatsApp
+          📲 Enviar Cuadrilla por WhatsApp
         </a>
         """
         st.markdown(boton_wa_html, unsafe_allow_html=True)
