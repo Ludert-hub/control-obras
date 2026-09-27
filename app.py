@@ -2,6 +2,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
+import urllib.parse
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -59,7 +60,6 @@ with tab_facturas:
       format="DD/MM/YYYY",
   )
 
-  # Campo numérico que activa el teclado del teléfono y arranca vacío
   monto_input = st.sidebar.number_input(
       "Monto en Bs.",
       min_value=0.0,
@@ -73,19 +73,8 @@ with tab_facturas:
   try:
     res_obras = supabase.table("registros").select("obra").execute()
     lista_existente = (
-        sorted(
-            list(
-                set(
-                    [
-                        str(r["obra"]).upper()
-                        for r in res_obras.data
-                        if r["obra"]
-                    ]
-                )
-            )
-        )
-        if res_obras.data
-        else []
+        sorted(list(set([str(r["obra"]).upper() for r in res_obras.data if r["obra"]])))
+        if res_obras.data else []
     )
   except Exception:
     lista_existente = []
@@ -152,11 +141,7 @@ with tab_facturas:
           )
           url_comprobante = supabase.storage.from_("comprobantes").get_public_url(file_name)
 
-        desc_completa = (
-            f"[{origen_final}] {descripcion_final}"
-            if origen_final
-            else descripcion_final
-        )
+        desc_completa = f"[{origen_final}] {descripcion_final}" if origen_final else descripcion_final
 
         data = {
             "fecha": fecha_gasto.strftime("%Y-%m-%d"),
@@ -175,28 +160,19 @@ with tab_facturas:
   st.subheader("📋 Resumen de Gastos y Facturas")
 
   try:
-    response = (
-        supabase.table("registros")
-        .select("*")
-        .not_.like("estado", "TAREA_%")
-        .order("id", desc=True)
-        .execute()
-    )
+    response = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").order("id", desc=True).execute()
     rows = response.data
 
     if rows:
       df = pd.DataFrame(rows)
-
       if "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime("%d/%m/%Y")
-
       if "obra" in df.columns:
         df["obra"] = df["obra"].astype(str).str.upper()
       if "descripcion" in df.columns:
         df["descripcion"] = df["descripcion"].astype(str).str.upper()
 
-      comprobantes_urls = []
-      estados_limpios = []
+      comprobantes_urls, estados_limpios = [], []
       for est in df["estado"]:
         if "URL:" in str(est):
           partes = str(est).split("URL:")
@@ -219,13 +195,10 @@ with tab_facturas:
       if obra_sel != "Todas":
         df_view = df_view[df_view["obra"] == obra_sel]
 
-      total_monto = df["monto"].sum()
+      total_monto = df["monto"].sum() if obra_sel == "Todas" else df[df["obra"] == obra_sel]["monto"].sum()
+      
       st.metric(
-          label=(
-              f"Total Filtrado ({obra_sel.upper()})"
-              if obra_sel != "Todas"
-              else "Total General de Gastos"
-          ),
+          label=f"Total Filtrado ({obra_sel.upper()})" if obra_sel != "Todas" else "Total General de Gastos",
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
@@ -237,8 +210,7 @@ with tab_facturas:
         if reg_con_foto:
           opciones_foto = {
               f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {formatear_monto_venezuela(r['monto'])} ({str(r['descripcion']).upper()})"
-              : r["estado"].split("URL:")[1]
-              for r in reg_con_foto
+              : r["estado"].split("URL:")[1] for r in reg_con_foto
           }
           sel_foto_key = st.selectbox("Selecciona el gasto para ver su recibo:", list(opciones_foto.keys()))
           url_imagen = opciones_foto[sel_foto_key]
@@ -246,7 +218,6 @@ with tab_facturas:
           st.markdown(f"[🔗 Abrir imagen en pestaña completa]({url_imagen})")
         else:
           st.info("No hay gastos con comprobantes adjuntos en este momento.")
-
     else:
       st.info("No hay gastos registrados todavía.")
   except Exception as e:
@@ -254,17 +225,11 @@ with tab_facturas:
 
   with st.expander("🗑️ Eliminar un gasto registrado"):
     try:
-      res_del = (
-          supabase.table("registros")
-          .select("id, obra, descripcion, monto")
-          .not_.like("estado", "TAREA_%")
-          .execute()
-      )
+      res_del = supabase.table("registros").select("id, obra, descripcion, monto").not_.like("estado", "TAREA_%").execute()
       if res_del.data:
         opciones_del = {
             f"ID {r['id']} - {str(r['obra']).upper()} - Bs. {formatear_monto_venezuela(r['monto'])} ({str(r['descripcion']).upper()})"
-            : r["id"]
-            for r in res_del.data
+            : r["id"] for r in res_del.data
         }
         sel_borrar = st.selectbox("Selecciona el registro a borrar", list(opciones_del.keys()), key="del_gasto")
         if st.button("Borrar Gasto", type="primary", use_container_width=True):
@@ -287,19 +252,8 @@ with tab_tareas:
     try:
       res_obras_t = supabase.table("registros").select("obra").execute()
       lista_existente_t = (
-          sorted(
-              list(
-                  set(
-                      [
-                          str(r["obra"]).upper()
-                          for r in res_obras_t.data
-                          if r["obra"]
-                      ]
-                  )
-              )
-          )
-          if res_obras_t.data
-          else []
+          sorted(list(set([str(r["obra"]).upper() for r in res_obras_t.data if r["obra"]])))
+          if res_obras_t.data else []
       )
     except Exception:
       lista_existente_t = []
@@ -316,9 +270,7 @@ with tab_tareas:
       t_obra_final = ""
 
   with col_f2:
-    t_desc_input = st.text_input(
-        "Descripción de la tarea", placeholder="Ej. Esmalte en columnas...", key="t_input_desc"
-    )
+    t_desc_input = st.text_input("Descripción de la tarea", placeholder="Ej. Esmalte en columnas...", key="t_input_desc")
     t_desc_final = t_desc_input.strip().upper()
 
   with col_f3:
@@ -349,27 +301,17 @@ with tab_tareas:
   st.markdown("---")
 
   try:
-    # DOBLE ORDENAMIENTO DE LA BASE DE DATOS: Agrupa por Estado, luego por ID (del más nuevo al más viejo)
-    res_tareas = (
-        supabase.table("registros")
-        .select("*")
-        .like("estado", "TAREA_%")
-        .order("estado", desc=True)
-        .order("id", desc=True)
-        .execute()
-    )
+    res_tareas = supabase.table("registros").select("*").like("estado", "TAREA_%").order("estado", desc=True).order("id", desc=True).execute()
 
     if res_tareas.data:
       lista_formateada = []
       for t in res_tareas.data:
         estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
         icono = "🔵" if estado_limpio == "LISTO" else "⏳"
-
         fecha_fmt = t["fecha"]
         try:
           fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime("%d/%m/%Y")
-        except Exception:
-          pass
+        except: pass
 
         lista_formateada.append({
             "id": t["id"],
@@ -380,25 +322,14 @@ with tab_tareas:
         })
 
       df_t = pd.DataFrame(lista_formateada)
-
-      st.dataframe(
-          df_t[["descripcion", "estado", "obra", "fecha"]],
-          use_container_width=True,
-          hide_index=True,
-      )
+      st.dataframe(df_t[["descripcion", "estado", "obra", "fecha"]], use_container_width=True, hide_index=True)
 
       st.markdown("### ⚙️ Gestionar o Cambiar Estados Individuales")
-
       opciones_tareas_gest = {
           f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {str(t['obra']).upper()} - {str(t['descripcion']).upper()} (ID: {t['id']})"
-          : t
-          for t in res_tareas.data
+          : t for t in res_tareas.data
       }
-
-      sel_gestion = st.selectbox(
-          "Selecciona una tarea para modificar o borrar:",
-          list(opciones_tareas_gest.keys()),
-      )
+      sel_gestion = st.selectbox("Selecciona una tarea para modificar o borrar:", list(opciones_tareas_gest.keys()))
       tarea_seleccionada = opciones_tareas_gest[sel_gestion]
 
       col_btn1, col_btn2, col_btn3 = st.columns(3)
@@ -414,7 +345,6 @@ with tab_tareas:
         if st.button("🗑️ Eliminar Tarea", type="primary", use_container_width=True):
           supabase.table("registros").delete().eq("id", tarea_seleccionada["id"]).execute()
           st.rerun()
-
     else:
       st.info("No hay tareas programadas registradas en este momento.")
   except Exception as e:
@@ -422,18 +352,14 @@ with tab_tareas:
 
 
 # ==========================================
-# SECCIÓN 3: REPORTES Y DESGLOSE
+# SECCIÓN 3: REPORTES, DESGLOSE Y EXPORTACIÓN
 # ==========================================
 with tab_reportes:
-  st.subheader("📊 Reportes y Estadísticas de Gastos")
+  st.subheader("📊 Reportes, Desglose y Exportación")
 
   try:
-    res_rep = (
-        supabase.table("registros")
-        .select("*")
-        .not_.like("estado", "TAREA_%")
-        .execute()
-    )
+    res_rep = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
+    
     if res_rep.data:
       df_rep = pd.DataFrame(res_rep.data)
 
@@ -446,37 +372,68 @@ with tab_reportes:
       df_rep["origen_fondos"] = df_rep["descripcion"].apply(extraer_origen)
       df_rep["obra"] = df_rep["obra"].astype(str).str.upper()
 
-      col_rep1, col_rep2 = st.columns(2)
+      # --- FILTROS DE DESGLOSE INTERACTIVOS ---
+      st.markdown("### 🎛️ Filtrar Datos para Exportar")
+      col_f1, col_f2 = st.columns(2)
+      
+      with col_f1:
+        lista_obras_rep = ["TODAS"] + sorted(list(df_rep["obra"].unique()))
+        filtro_obra = st.selectbox("Filtrar por Obra:", lista_obras_rep)
+        
+      with col_f2:
+        lista_orig_rep = ["TODOS"] + sorted(list(df_rep["origen_fondos"].unique()))
+        filtro_origen = st.selectbox("Filtrar por Origen de Fondos:", lista_orig_rep)
 
-      with col_rep1:
-        st.markdown("### 🏗️ Desglose Total por Obra")
-        df_obra = df_rep.groupby("obra")["monto"].sum().reset_index()
-        df_obra["Monto Total (Bs.)"] = df_obra["monto"].apply(formatear_monto_venezuela)
-        st.dataframe(
-            df_obra[["obra", "Monto Total (Bs.)"]],
-            use_container_width=True,
-            hide_index=True,
-        )
+      # Aplicar los filtros seleccionados
+      df_filtrado = df_rep.copy()
+      if filtro_obra != "TODAS":
+        df_filtrado = df_filtrado[df_filtrado["obra"] == filtro_obra]
+      if filtro_origen != "TODOS":
+        df_filtrado = df_filtrado[df_filtrado["origen_fondos"] == filtro_origen]
 
-      with col_rep2:
-        st.markdown("### 💳 Desglose por Origen de los Fondos")
-        df_origen = df_rep.groupby("origen_fondos")["monto"].sum().reset_index()
-        df_origen["Monto Total (Bs.)"] = df_origen["monto"].apply(formatear_monto_venezuela)
-        st.dataframe(
-            df_origen[["origen_fondos", "Monto Total (Bs.)"]],
-            use_container_width=True,
-            hide_index=True,
-        )
+      total_filtrado = df_filtrado["monto"].sum()
+      st.metric(label="Total del Reporte Actual", value=f"Bs. {formatear_monto_venezuela(total_filtrado)}")
+
+      # Mostrar tabla preliminar
+      df_mostrar = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].copy()
+      df_mostrar["monto"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
+      st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
       st.markdown("---")
-      st.markdown("### 🔍 Resumen Cruzado (Obra y Origen)")
+      
+      # --- BOTONES DE EXPORTACIÓN Y WHATSAPP ---
+      st.markdown("### 📲 Exportar y Compartir")
+      col_btn_exp1, col_btn_exp2 = st.columns(2)
+      
+      with col_btn_exp1:
+        # Generar CSV con formato compatible con Excel Latino (separador ; y BOM utf-8)
+        csv_data = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].to_csv(index=False, sep=';', encoding='utf-8-sig')
+        st.download_button(
+            label="📥 Descargar Reporte (Excel/CSV)",
+            data=csv_data,
+            file_name=f"Reporte_{filtro_obra}_{filtro_origen}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+        
+      with col_btn_exp2:
+        # Generar enlace automático a WhatsApp
+        mensaje_wa = f"📊 *Reporte de Gastos*\n🏗️ Obra: {filtro_obra}\n💳 Origen: {filtro_origen}\n💰 *Total: Bs. {formatear_monto_venezuela(total_filtrado)}*\n\n_Generado desde la App de Control de Obras_"
+        url_wa = f"https://wa.me/?text={urllib.parse.quote(mensaje_wa)}"
+        
+        # Botón estilizado tipo WhatsApp
+        boton_wa_html = f"""
+        <a href="{url_wa}" target="_blank" style="display: block; text-align: center; background-color: #25D366; color: white; padding: 10px; border-radius: 5px; text-decoration: none; font-weight: bold; border: 1px solid #1DA851;">
+          📲 Enviar Resumen por WhatsApp
+        </a>
+        """
+        st.markdown(boton_wa_html, unsafe_allow_html=True)
+
+      st.markdown("---")
+      st.markdown("### 🔍 Resumen Cruzado General (Todas las obras y orígenes)")
       df_cruzado = df_rep.groupby(["obra", "origen_fondos"])["monto"].sum().reset_index()
       df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(formatear_monto_venezuela)
-      st.dataframe(
-          df_cruzado[["obra", "origen_fondos", "Monto Total (Bs.)"]],
-          use_container_width=True,
-          hide_index=True,
-      )
+      st.dataframe(df_cruzado[["obra", "origen_fondos", "Monto Total (Bs.)"]], use_container_width=True, hide_index=True)
 
     else:
       st.info("No hay suficientes datos de gastos para generar reportes.")
