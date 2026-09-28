@@ -160,13 +160,18 @@ with tab_facturas:
   st.subheader("📋 Resumen de Gastos y Facturas")
 
   try:
-    response = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").order("id", desc=True).execute()
+    response = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
     rows = response.data
 
     if rows:
       df = pd.DataFrame(rows)
-      if "fecha" in df.columns:
-        df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.strftime("%d/%m/%Y")
+      
+      # Convertir fecha a datetime real para garantizar un ordenamiento cronológico perfecto
+      df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce")
+      
+      # ORDENAMIENTO CRONOLÓGICO ESTRICTO: Primero por fecha real descendente, luego por ID descendente
+      df = df.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
+
       if "obra" in df.columns:
         df["obra"] = df["obra"].astype(str).str.upper()
       if "descripcion" in df.columns:
@@ -185,9 +190,9 @@ with tab_facturas:
       df["estado_limpio"] = estados_limpios
       df["comprobante_url"] = comprobantes_urls
 
-      df_view = df[["id", "fecha", "monto", "obra", "descripcion", "comprobante_url"]].copy()
+      df_view = df[["id", "fecha_dt", "fecha", "monto", "obra", "descripcion", "comprobante_url"]].copy()
+      df_view["fecha_fmt"] = df_view["fecha_dt"].dt.strftime("%d/%m/%Y")
       df_view["monto_fmt"] = df_view["monto"].apply(formatear_monto_venezuela)
-      df_view = df_view.drop(columns=["monto"])
 
       obras_disp = ["Todas"] + list(df_view["obra"].unique())
       obra_sel = st.selectbox("Filtrar gastos por Obra:", obras_disp, key="filtro_gasto")
@@ -202,7 +207,15 @@ with tab_facturas:
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      st.dataframe(df_view, use_container_width=True)
+      df_final_display = df_view[["fecha_fmt", "obra", "descripcion", "comprobante_url", "monto_fmt"]].copy()
+      df_final_display.columns = ["Fecha", "Obra", "Descripción", "Comprobante", "Monto (Bs.)"]
+
+      def resaltar_creditos(row):
+          if "CREDITO MANGO CENTER" in str(row["Descripción"]):
+              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
+          return [''] * len(row)
+
+      st.dataframe(df_final_display.style.apply(resaltar_creditos, axis=1), use_container_width=True, hide_index=True)
 
       st.markdown("### 🔍 Ver Comprobante Adjunto de un Gasto")
       with st.expander("Abrir imagen o factura de pago"):
@@ -222,6 +235,103 @@ with tab_facturas:
       st.info("No hay gastos registrados todavía.")
   except Exception as e:
     st.error(f"Error al cargar datos: {e}")
+
+  # --- MÓDULO DE MODIFICAR / EDITAR GASTO ---
+  with st.expander("✏️ Modificar un Gasto Registrado (Corrección)"):
+    try:
+      res_edit = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
+      if res_edit.data:
+        # Ordenar también el selector de edición cronológicamente
+        df_edit_tmp = pd.DataFrame(res_edit.data)
+        df_edit_tmp["fecha_dt"] = pd.to_datetime(df_edit_tmp["fecha"], errors="coerce")
+        df_edit_tmp = df_edit_tmp.sort_values(by=["fecha_dt", "id"], ascending=[False, False])
+
+        opciones_edit = {
+            f"ID {r['id']} - Fecha: {r['fecha']} - {str(r['obra']).upper()} - Bs. {formatear_monto_venezuela(r['monto'])} ({str(r['descripcion']).upper()})"
+            : r for _, r in df_edit_tmp.iterrows()
+        }
+        sel_mod = st.selectbox("Selecciona el registro que deseas corregir:", list(opciones_edit.keys()), key="select_mod_gasto")
+        gasto_actual = opciones_edit[sel_mod]
+
+        desc_actual_str = str(gasto_actual['descripcion'])
+        orig_actual = ""
+        solo_desc = desc_actual_str
+        if desc_actual_str.startswith("[") and "]" in desc_actual_str:
+            orig_actual = desc_actual_str.split("]")[0].replace("[", "").strip()
+            solo_desc = desc_actual_str.split("]")[1].strip()
+
+        with st.form("form_edicion_gasto"):
+            st.markdown(f"**Editando Registro ID: {gasto_actual['id']}**")
+            
+            try:
+                fecha_dt = datetime.strptime(gasto_actual['fecha'], "%Y-%m-%d").date()
+            except:
+                fecha_dt = datetime.now().date()
+
+            nueva_fecha = st.date_input("Fecha del gasto", value=fecha_dt, format="DD/MM/YYYY")
+            nuevo_monto = st.number_input("Monto en Bs.", min_value=0.0, value=float(gasto_actual['monto']), step=0.01, format="%.2f")
+
+            lista_obras_edit = sorted(list(set([str(r["obra"]).upper() for r in res_edit.data if r["obra"]])))
+            obra_actual_val = str(gasto_actual['obra']).upper()
+            
+            if obra_actual_val in lista_obras_edit:
+                idx_obra = lista_obras_edit.index(obra_actual_val) + 1
+            else:
+                idx_obra = 0
+
+            opciones_obra_edit = ["-- SELECCIONAR OBRA --"] + lista_obras_edit + ["➕ OTRA OBRA NUEVA..."]
+            sel_obra_edit = st.selectbox("Obra / Destino", opciones_obra_edit, index=idx_obra if idx_obra < len(opciones_obra_edit) else 0, key="edit_sel_obra")
+
+            if sel_obra_edit == "➕ OTRA OBRA NUEVA...":
+                input_obra_edit_nueva = st.text_input("Escribe el nombre de la NUEVA obra:", key="edit_input_obra_nueva")
+                obra_final_edit = input_obra_edit_nueva.strip().upper()
+            elif sel_obra_edit != "-- SELECCIONAR OBRA --":
+                obra_final_edit = sel_obra_edit.strip().upper()
+            else:
+                obra_final_edit = obra_actual_val
+
+            lista_origenes_edit = []
+            for r in res_edit.data:
+                d = str(r["descripcion"])
+                if d.startswith("[") and "]" in d:
+                    o = d.split("]")[0].replace("[", "").strip()
+                    if o: lista_origenes_edit.append(o)
+            lista_origenes_edit = sorted(list(set(lista_origenes_edit)))
+
+            if orig_actual in lista_origenes_edit:
+                idx_orig = lista_origenes_edit.index(orig_actual) + 1
+            else:
+                idx_orig = 0
+
+            opciones_orig_edit = ["-- SELECCIONAR ORIGEN --"] + lista_origenes_edit + ["➕ OTRO ORIGEN NUEVO..."]
+            sel_orig_edit = st.selectbox("Origen de los Fondos", opciones_orig_edit, index=idx_orig if idx_orig < len(opciones_orig_edit) else 0, key="edit_sel_orig")
+
+            if sel_orig_edit == "➕ OTRO ORIGEN NUEVO...":
+                input_orig_edit_nuevo = st.text_input("Escribe el NUEVO origen de fondos:", key="edit_input_orig_nuevo")
+                origen_final_edit = input_orig_edit_nuevo.strip().upper()
+            elif sel_orig_edit != "-- SELECCIONAR ORIGEN --":
+                origen_final_edit = sel_orig_edit.strip().upper()
+            else:
+                origen_final_edit = orig_actual
+
+            nueva_desc_input = st.text_input("Descripción", value=solo_desc).strip().upper()
+
+            btn_guardar_cambios = st.form_submit_button("💾 Guardar Cambios del Gasto", type="primary")
+            
+            if btn_guardar_cambios:
+                desc_completa_edit = f"[{origen_final_edit}] {nueva_desc_input}" if origen_final_edit else nueva_desc_input
+                
+                supabase.table("registros").update({
+                    "fecha": nueva_fecha.strftime("%Y-%m-%d"),
+                    "monto": nuevo_monto,
+                    "obra": obra_final_edit,
+                    "descripcion": desc_completa_edit
+                }).eq("id", gasto_actual['id']).execute()
+                
+                st.success("¡Gasto modificado y actualizado con éxito!")
+                st.rerun()
+    except Exception as e:
+      st.error(f"Error en módulo de edición: {e}")
 
   with st.expander("🗑️ Eliminar un gasto registrado"):
     try:
@@ -301,33 +411,42 @@ with tab_tareas:
   st.markdown("---")
 
   try:
-    res_tareas = supabase.table("registros").select("*").like("estado", "TAREA_%").order("estado", desc=True).order("id", desc=True).execute()
+    res_tareas = supabase.table("registros").select("*").like("estado", "TAREA_%").execute()
 
     if res_tareas.data:
+      df_t_raw = pd.DataFrame(res_tareas.data)
+      df_t_raw["fecha_dt"] = pd.to_datetime(df_t_raw["fecha"], errors="coerce")
+      df_t_raw["estado_limpio"] = df_t_raw["estado"].apply(lambda x: "LISTO" if "LISTO" in str(x) else "PENDIENTE")
+      
+      # Ordenar tareas: Pendientes arriba, luego por fecha y ID
+      df_t_raw = df_t_raw.sort_values(by=["estado_limpio", "fecha_dt", "id"], ascending=[True, False, False]).reset_index(drop=True)
+
       lista_formateada = []
-      for t in res_tareas.data:
-        estado_limpio = "LISTO" if "LISTO" in t["estado"] else "PENDIENTE"
-        icono = "🔵" if estado_limpio == "LISTO" else "⏳"
+      for _, t in df_t_raw.iterrows():
+        est_L = t["estado_limpio"]
+        icono = "🔵" if est_L == "LISTO" else "⏳"
         fecha_fmt = t["fecha"]
         try:
-          fecha_fmt = datetime.strptime(t["fecha"], "%Y-%m-%d").strftime("%d/%m/%Y")
+          fecha_fmt = pd.to_datetime(t["fecha"]).strftime("%d/%m/%Y")
         except: pass
 
         lista_formateada.append({
             "id": t["id"],
             "obra": str(t["obra"]).upper(),
             "descripcion": str(t["descripcion"]).upper(),
-            "estado": f"{icono} {estado_limpio}",
+            "estado": f"{icono} {est_L}",
             "fecha": fecha_fmt,
         })
 
       df_t = pd.DataFrame(lista_formateada)
-      st.dataframe(df_t[["descripcion", "estado", "obra", "fecha"]], use_container_width=True, hide_index=True)
+      df_t_display = df_t[["descripcion", "estado", "obra", "fecha"]].copy()
+      df_t_display.columns = ["Descripción", "Estado", "Obra", "Fecha"]
+      st.dataframe(df_t_display, use_container_width=True, hide_index=True)
 
       st.markdown("### ⚙️ Gestionar o Cambiar Estados Individuales")
       opciones_tareas_gest = {
           f"[{'LISTO' if 'LISTO' in t['estado'] else 'PENDIENTE'}] {str(t['obra']).upper()} - {str(t['descripcion']).upper()} (ID: {t['id']})"
-          : t for t in res_tareas.data
+          : t for _, t in df_t_raw.iterrows()
       }
       sel_gestion = st.selectbox("Selecciona una tarea para modificar o borrar:", list(opciones_tareas_gest.keys()))
       tarea_seleccionada = opciones_tareas_gest[sel_gestion]
@@ -362,6 +481,10 @@ with tab_reportes:
     
     if res_rep.data:
       df_rep = pd.DataFrame(res_rep.data)
+      df_rep["fecha_dt"] = pd.to_datetime(df_rep["fecha"], errors="coerce")
+      
+      # Ordenamiento cronológico estricto en reportes también
+      df_rep = df_rep.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
 
       def extraer_origen(desc):
         desc_str = str(desc)
@@ -394,12 +517,13 @@ with tab_reportes:
       total_filtrado = df_filtrado["monto"].sum()
       st.metric(label="Total del Reporte Actual", value=f"Bs. {formatear_monto_venezuela(total_filtrado)}")
 
-      # Mostrar tabla preliminar
-      df_mostrar = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].copy()
-      if "fecha" in df_mostrar.columns:
-          df_mostrar["fecha"] = pd.to_datetime(df_mostrar["fecha"], errors="coerce").dt.strftime("%d/%m/%Y")
+      df_mostrar = df_filtrado[["fecha_dt", "obra", "origen_fondos", "descripcion", "monto"]].copy()
+      df_mostrar["Fecha"] = df_mostrar["fecha_dt"].dt.strftime("%d/%m/%Y")
       df_mostrar["monto"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
-      st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+      
+      df_mostrar_final = df_mostrar[["Fecha", "obra", "origen_fondos", "descripcion", "monto"]].copy()
+      df_mostrar_final.columns = ["Fecha", "Obra", "Origen", "Descripción", "Monto (Bs.)"]
+      st.dataframe(df_mostrar_final, use_container_width=True, hide_index=True)
 
       st.markdown("---")
       
@@ -408,7 +532,6 @@ with tab_reportes:
       col_btn_exp1, col_btn_exp2 = st.columns(2)
       
       with col_btn_exp1:
-        # Generar CSV con formato compatible con Excel Latino (separador ; y BOM utf-8)
         csv_data = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].to_csv(index=False, sep=';', encoding='utf-8-sig')
         st.download_button(
             label="📥 Descargar Reporte en Excel (CSV)",
@@ -419,10 +542,8 @@ with tab_reportes:
         )
         
       with col_btn_exp2:
-        # Generar texto detallado para WhatsApp incluyendo la cuadrilla
         mensaje_wa = f"📊 *Reporte de Gastos*\n🏗️ Obra: {filtro_obra}\n💳 Origen: {filtro_origen}\n\n*Detalle de movimientos:*\n"
         
-        # Iterar sobre las filas filtradas para agregarlas al mensaje de WhatsApp
         for _, fila in df_filtrado.iterrows():
             fecha_str = pd.to_datetime(fila['fecha']).strftime("%d/%m/%Y") if pd.notnull(fila['fecha']) else ""
             desc_str = fila['descripcion']
@@ -433,7 +554,6 @@ with tab_reportes:
         
         url_wa = f"https://wa.me/?text={urllib.parse.quote(mensaje_wa)}"
         
-        # Botón estilizado tipo WhatsApp
         boton_wa_html = f"""
         <a href="{url_wa}" target="_blank" style="display: block; text-align: center; background-color: #25D366; color: white; padding: 10px; border-radius: 5px; text-decoration: none; font-weight: bold; border: 1px solid #1DA851;">
           📲 Enviar Cuadrilla por WhatsApp
@@ -445,7 +565,8 @@ with tab_reportes:
       st.markdown("### 🔍 Resumen Cruzado General (Todas las obras y orígenes)")
       df_cruzado = df_rep.groupby(["obra", "origen_fondos"])["monto"].sum().reset_index()
       df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(formatear_monto_venezuela)
-      st.dataframe(df_cruzado[["obra", "origen_fondos", "Monto Total (Bs.)"]], use_container_width=True, hide_index=True)
+      df_cruzado.columns = ["Obra", "Origen de Fondos", "Monto Total (Bs.)"]
+      st.dataframe(df_cruzado, use_container_width=True, hide_index=True)
 
     else:
       st.info("No hay suficientes datos de gastos para generar reportes.")
