@@ -165,8 +165,6 @@ with tab_facturas:
 
     if rows:
       df = pd.DataFrame(rows)
-      
-      # Conversión a datetime y orden cronológico estricto (más reciente primero)
       df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce")
       df = df.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
 
@@ -205,7 +203,6 @@ with tab_facturas:
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      # ORDEN SOLICITADO: Fecha, Obra, Monto (Bs.), Descripción (y Comprobante)
       df_final_display = df_view[["fecha_fmt", "obra", "monto_fmt", "descripcion", "comprobante_url"]].copy()
       df_final_display.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción", "Comprobante"]
 
@@ -416,7 +413,11 @@ with tab_tareas:
       df_t_raw["fecha_dt"] = pd.to_datetime(df_t_raw["fecha"], errors="coerce")
       df_t_raw["estado_limpio"] = df_t_raw["estado"].apply(lambda x: "LISTO" if "LISTO" in str(x) else "PENDIENTE")
       
-      df_t_raw = df_t_raw.sort_values(by=["estado_limpio", "fecha_dt", "id"], ascending=[True, False, False]).reset_index(drop=True)
+      # ORDEN CORREGIDO: PENDIENTES PRIMERO (alfabéticamente 'PENDIENTE' va antes que 'LISTO', o forzamos mapeo)
+      # Para asegurar que PENDIENTE sea primero, mapeamos a 0 y LISTO a 1
+      df_t_raw["orden_estado"] = df_t_raw["estado_limpio"].apply(lambda x: 0 if x == "PENDIENTE" else 1)
+      
+      df_t_raw = df_t_raw.sort_values(by=["orden_estado", "fecha_dt", "id"], ascending=[True, False, False]).reset_index(drop=True)
 
       lista_formateada = []
       for _, t in df_t_raw.iterrows():
