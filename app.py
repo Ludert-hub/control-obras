@@ -42,6 +42,46 @@ def formatear_monto_venezuela(valor):
     return "0,00"
 
 
+# ==========================================
+# 🚨 SISTEMA DE ALERTA DE CRÉDITOS (MANGO CENTER > 13 DÍAS)
+# ==========================================
+try:
+  res_alertas = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
+  if res_alertas.data:
+    df_alt = pd.DataFrame(res_alertas.data)
+    df_alt["fecha_dt"] = pd.to_datetime(df_alt["fecha"], errors="coerce")
+    hoy = pd.Timestamp.now().normalize()
+    
+    deudas_por_vencer = []
+    for _, row in df_alt.iterrows():
+      desc = str(row["descripcion"]).upper()
+      if "CREDITO MANGO CENTER" in desc:
+        f_gasto = row["fecha_dt"]
+        if pd.notnull(f_gasto):
+          dias_transcurridos = (hoy - f_gasto.normalize()).days
+          # Alerta si han transcurrido 13 días o más desde la compra (faltan 2 días o menos para los 15)
+          if dias_transcurridos >= 13:
+            dias_restantes = max(0, 15 - dias_transcurridos)
+            deudas_por_vencer.append({
+                "id": row["id"],
+                "fecha": f_gasto.strftime("%d/%m/%Y"),
+                "obra": str(row["obra"]).upper(),
+                "monto": formatear_monto_venezuela(row["monto"]),
+                "dias": dias_transcurridos,
+                "restantes": dias_restantes
+            })
+
+    if deudas_por_vencer:
+      st.error("🚨 **¡ATENCIÓN LUDER! TIENES CRÉDITOS DE 'CREDITO MANGO CENTER' PRÓXIMOS A VENCER (15 DÍAS):**")
+      for deuda in deudas_por_vencer:
+        if deuda["restantes"] == 0:
+          st.warning(f"⚠️ ¡CRÉDITO VENCIDO! Factura del **{deuda['fecha']}** (Obra: **{deuda['obra']}**) por **Bs. {deuda['monto']}** cumplió o superó los 15 días (Han pasado {deuda['dias']} días). ¡Gestionar pago!")
+        else:
+          st.warning(f"⏳ Alerta de vencimiento: Factura del **{deuda['fecha']}** (Obra: **{deuda['obra']}**) por **Bs. {deuda['monto']}** tiene **{deuda['dias']} días** desde la compra (¡Quedan {deuda['restantes']} día(s) para completar los 15!).")
+except Exception as e:
+  pass
+
+
 # --- PESTAÑAS PRINCIPALES ---
 tab_facturas, tab_tareas, tab_reportes = st.tabs(
     ["💰 Facturas y Gastos", "📋 Tareas Programadas", "📊 Reportes y Desglose"]
@@ -413,10 +453,7 @@ with tab_tareas:
       df_t_raw["fecha_dt"] = pd.to_datetime(df_t_raw["fecha"], errors="coerce")
       df_t_raw["estado_limpio"] = df_t_raw["estado"].apply(lambda x: "LISTO" if "LISTO" in str(x) else "PENDIENTE")
       
-      # ORDEN CORREGIDO: PENDIENTES PRIMERO (alfabéticamente 'PENDIENTE' va antes que 'LISTO', o forzamos mapeo)
-      # Para asegurar que PENDIENTE sea primero, mapeamos a 0 y LISTO a 1
       df_t_raw["orden_estado"] = df_t_raw["estado_limpio"].apply(lambda x: 0 if x == "PENDIENTE" else 1)
-      
       df_t_raw = df_t_raw.sort_values(by=["orden_estado", "fecha_dt", "id"], ascending=[True, False, False]).reset_index(drop=True)
 
       lista_formateada = []
@@ -471,7 +508,9 @@ with tab_tareas:
 # ==========================================
 # SECCIÓN 3: REPORTES, DESGLOSE Y EXPORTACIÓN
 # ==========================================
-with tab_reportes:
+tab_reportes_gastos, tab_reportes_creditos = st.tabs(["📊 Reportes de Gastos", "🚨 Control de Créditos / Deudas"])
+
+with tab_reportes_gastos:
   st.subheader("📊 Reportes, Desglose y Exportación")
 
   try:
@@ -492,18 +531,17 @@ with tab_reportes:
       df_rep["obra"] = df_rep["obra"].astype(str).str.upper()
 
       # --- FILTROS DE DESGLOSE INTERACTIVOS ---
-      st.markdown("### 🎛️ Filtrar Datos para Exportar")
+      st.markdown("### 🎛️️ Filtrar Datos para Exportar")
       col_f1, col_f2 = st.columns(2)
       
       with col_f1:
         lista_obras_rep = ["TODAS"] + sorted(list(df_rep["obra"].unique()))
-        filtro_obra = st.selectbox("Filtrar por Obra:", lista_obras_rep)
+        filtro_obra = st.selectbox("Filtrar por Obra:", lista_obras_rep, key="rep_obra")
         
       with col_f2:
         lista_orig_rep = ["TODOS"] + sorted(list(df_rep["origen_fondos"].unique()))
-        filtro_origen = st.selectbox("Filtrar por Origen de Fondos:", lista_orig_rep)
+        filtro_origen = st.selectbox("Filtrar por Origen de Fondos:", lista_orig_rep, key="rep_orig")
 
-      # Aplicar los filtros seleccionados
       df_filtrado = df_rep.copy()
       if filtro_obra != "TODAS":
         df_filtrado = df_filtrado[df_filtrado["obra"] == filtro_obra]
@@ -519,7 +557,13 @@ with tab_reportes:
       
       df_mostrar_final = df_mostrar[["Fecha", "obra", "Monto (Bs.)", "descripcion"]].copy()
       df_mostrar_final.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción"]
-      st.dataframe(df_mostrar_final, use_container_width=True, hide_index=True)
+
+      def resaltar_creditos_rep(row):
+          if "CREDITO MANGO CENTER" in str(row["Descripción"]):
+              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
+          return [''] * len(row)
+
+      st.dataframe(df_mostrar_final.style.apply(resaltar_creditos_rep, axis=1), use_container_width=True, hide_index=True)
 
       st.markdown("---")
       
@@ -562,9 +606,71 @@ with tab_reportes:
       df_cruzado = df_rep.groupby(["obra", "origen_fondos"])["monto"].sum().reset_index()
       df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(formatear_monto_venezuela)
       df_cruzado.columns = ["Obra", "Origen de Fondos", "Monto Total (Bs.)"]
-      st.dataframe(df_cruzado, use_container_width=True, hide_index=True)
+      
+      def resaltar_creditos_cruzado(row):
+          if "CREDITO MANGO CENTER" in str(row["Origen de Fondos"]):
+              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
+          return [''] * len(row)
+
+      st.dataframe(df_cruzado.style.apply(resaltar_creditos_cruzado, axis=1), use_container_width=True, hide_index=True)
 
     else:
       st.info("No hay suficientes datos de gastos para generar reportes.")
   except Exception as e:
     st.error(f"Error generando reportes: {e}")
+
+# ==========================================
+# SECCIÓN 3.2: CONTROL ESPECÍFICO DE CRÉDITOS PENDIENTES
+# ==========================================
+with tab_reportes_creditos:
+  st.subheader("🚨 Control y Seguimiento de Créditos Pendientes (Mango Center)")
+  st.markdown("Listado exclusivo de deudas activas a crédito con cálculo de días transcurridos hacia el límite de 15 días.")
+
+  try:
+    res_cred = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
+    if res_cred.data:
+      df_cred = pd.DataFrame(res_cred.data)
+      df_cred["fecha_dt"] = pd.to_datetime(df_cred["fecha"], errors="coerce")
+      
+      # Filtrar solo los que tengan CREDITO MANGO CENTER
+      df_cred = df_cred[df_cred["descripcion"].astype(str).str.upper().str.contains("CREDITO MANGO CENTER")].copy()
+
+      if not df_cred.empty:
+        hoy = pd.Timestamp.now().normalize()
+        
+        lista_creditos_gestion = []
+        for _, row in df_cred.iterrows():
+          f_gasto = row["fecha_dt"]
+          dias = (hoy - f_gasto.normalize()).days if pd.notnull(f_gasto) else 0
+          estado_venc = "⚠️ VENCIDO (>15 DÍAS)" if dias > 15 else ("🚨 POR VENCER (≥13 DÍAS)" if dias >= 13 else "⏳ AL DÍA")
+          
+          lista_creditos_gestion.append({
+              "id": row["id"],
+              "Fecha Compra": f_gasto.strftime("%d/%m/%Y") if pd.notnull(f_gasto) else "",
+              "Obra": str(row["obra"]).upper(),
+              "Descripción": str(row["descripcion"]).upper(),
+              "Monto (Bs.)": formatear_monto_venezuela(row["monto"]),
+              "Días Transcurridos": dias,
+              "Estatus Crédito": estado_venc,
+              "raw_monto": row["monto"]
+          })
+
+        df_cg = pd.DataFrame(lista_creditos_gestion)
+        df_cg = df_cg.sort_values(by="Días Transcurridos", ascending=False).reset_index(drop=True)
+
+        st.metric("Total Deuda Activa (Mango Center)", f"Bs. {formatear_monto_venezuela(df_cg['raw_monto'].sum())}")
+
+        df_cg_display = df_cg[["Fecha Compra", "Obra", "Descripción", "Monto (Bs.)", "Días Transcurridos", "Estatus Crédito"]]
+        
+        def resaltar_tabla_creditos(row):
+            if row["Días Transcurridos"] >= 13:
+                return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(df_cg_display.style.apply(resaltar_tabla_creditos, axis=1), use_container_width=True, hide_index=True)
+      else:
+        st.success("¡Excelente noticia! No hay créditos pendientes con 'CREDITO MANGO CENTER' en este momento.")
+    else:
+      st.info("No hay registros disponibles.")
+  except Exception as e:
+    st.error(f"Error cargando control de créditos: {e}")
