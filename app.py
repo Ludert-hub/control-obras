@@ -166,10 +166,8 @@ with tab_facturas:
     if rows:
       df = pd.DataFrame(rows)
       
-      # Convertir fecha a datetime real para garantizar un ordenamiento cronológico perfecto
+      # Conversión a datetime y orden cronológico estricto (más reciente primero)
       df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce")
-      
-      # ORDENAMIENTO CRONOLÓGICO ESTRICTO: Primero por fecha real descendente, luego por ID descendente
       df = df.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
 
       if "obra" in df.columns:
@@ -207,8 +205,9 @@ with tab_facturas:
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      df_final_display = df_view[["fecha_fmt", "obra", "descripcion", "comprobante_url", "monto_fmt"]].copy()
-      df_final_display.columns = ["Fecha", "Obra", "Descripción", "Comprobante", "Monto (Bs.)"]
+      # ORDEN SOLICITADO: Fecha, Obra, Monto (Bs.), Descripción (y Comprobante)
+      df_final_display = df_view[["fecha_fmt", "obra", "monto_fmt", "descripcion", "comprobante_url"]].copy()
+      df_final_display.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción", "Comprobante"]
 
       def resaltar_creditos(row):
           if "CREDITO MANGO CENTER" in str(row["Descripción"]):
@@ -241,7 +240,6 @@ with tab_facturas:
     try:
       res_edit = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
       if res_edit.data:
-        # Ordenar también el selector de edición cronológicamente
         df_edit_tmp = pd.DataFrame(res_edit.data)
         df_edit_tmp["fecha_dt"] = pd.to_datetime(df_edit_tmp["fecha"], errors="coerce")
         df_edit_tmp = df_edit_tmp.sort_values(by=["fecha_dt", "id"], ascending=[False, False])
@@ -418,7 +416,6 @@ with tab_tareas:
       df_t_raw["fecha_dt"] = pd.to_datetime(df_t_raw["fecha"], errors="coerce")
       df_t_raw["estado_limpio"] = df_t_raw["estado"].apply(lambda x: "LISTO" if "LISTO" in str(x) else "PENDIENTE")
       
-      # Ordenar tareas: Pendientes arriba, luego por fecha y ID
       df_t_raw = df_t_raw.sort_values(by=["estado_limpio", "fecha_dt", "id"], ascending=[True, False, False]).reset_index(drop=True)
 
       lista_formateada = []
@@ -482,8 +479,6 @@ with tab_reportes:
     if res_rep.data:
       df_rep = pd.DataFrame(res_rep.data)
       df_rep["fecha_dt"] = pd.to_datetime(df_rep["fecha"], errors="coerce")
-      
-      # Ordenamiento cronológico estricto en reportes también
       df_rep = df_rep.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
 
       def extraer_origen(desc):
@@ -517,12 +512,12 @@ with tab_reportes:
       total_filtrado = df_filtrado["monto"].sum()
       st.metric(label="Total del Reporte Actual", value=f"Bs. {formatear_monto_venezuela(total_filtrado)}")
 
-      df_mostrar = df_filtrado[["fecha_dt", "obra", "origen_fondos", "descripcion", "monto"]].copy()
+      df_mostrar = df_filtrado[["fecha_dt", "obra", "monto", "descripcion"]].copy()
       df_mostrar["Fecha"] = df_mostrar["fecha_dt"].dt.strftime("%d/%m/%Y")
-      df_mostrar["monto"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
+      df_mostrar["Monto (Bs.)"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
       
-      df_mostrar_final = df_mostrar[["Fecha", "obra", "origen_fondos", "descripcion", "monto"]].copy()
-      df_mostrar_final.columns = ["Fecha", "Obra", "Origen", "Descripción", "Monto (Bs.)"]
+      df_mostrar_final = df_mostrar[["Fecha", "obra", "Monto (Bs.)", "descripcion"]].copy()
+      df_mostrar_final.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción"]
       st.dataframe(df_mostrar_final, use_container_width=True, hide_index=True)
 
       st.markdown("---")
@@ -532,7 +527,7 @@ with tab_reportes:
       col_btn_exp1, col_btn_exp2 = st.columns(2)
       
       with col_btn_exp1:
-        csv_data = df_filtrado[["fecha", "obra", "origen_fondos", "descripcion", "monto"]].to_csv(index=False, sep=';', encoding='utf-8-sig')
+        csv_data = df_filtrado[["fecha", "obra", "monto", "descripcion"]].to_csv(index=False, sep=';', encoding='utf-8-sig')
         st.download_button(
             label="📥 Descargar Reporte en Excel (CSV)",
             data=csv_data,
