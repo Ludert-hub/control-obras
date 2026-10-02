@@ -21,7 +21,7 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-st.title("🏗️️ Control de Obras y Materiales")
+st.title("🏗️ Control de Obras y Materiales")
 st.markdown("Sistema sincronizado en tiempo real (PC y Teléfonos).")
 
 # --- BOTÓN DE ACTUALIZACIÓN RÁPIDA DE LA NUBE ---
@@ -700,7 +700,7 @@ with tab_reportes_gastos:
       def color_rojo_cruzado(df_to_style):
           styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
           for idx, row in df_to_style.iterrows():
-              if str(df_to_style.loc[idx, "Origen de Fondos"]) == "CREDITO":
+              if str(row["Origen de Fondos"]) == "CREDITO":
                   styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
           return styles
 
