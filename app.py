@@ -21,7 +21,7 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-st.title("🏗️ Control de Obras y Materiales")
+st.title("🏗️️ Control de Obras y Materiales")
 st.markdown("Sistema sincronizado en tiempo real (PC y Teléfonos).")
 
 # --- BOTÓN DE ACTUALIZACIÓN RÁPIDA DE LA NUBE ---
@@ -55,7 +55,6 @@ try:
     deudas_por_vencer = []
     for _, row in df_alt.iterrows():
       desc = str(row["descripcion"]).upper()
-      # Detecta tanto los nuevos [CREDITO] como los viejos [CREDITO MANGO CENTER]
       if "CREDITO" in desc:
         f_gasto = row["fecha_dt"]
         if pd.notnull(f_gasto):
@@ -251,7 +250,6 @@ with tab_facturas:
       df_view["fecha_fmt"] = df_view["fecha_dt"].dt.strftime("%d/%m/%Y")
       df_view["monto_fmt"] = df_view["monto"].apply(formatear_monto_venezuela)
 
-      # Procesamiento inteligente para separar descripción y observaciones (incluso para registros viejos con MANGO CENTER)
       descripciones_limpias, observaciones_lista = [], []
       for d in df_view["descripcion"]:
         d_str = str(d)
@@ -293,7 +291,6 @@ with tab_facturas:
           styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
           for idx, row in df_to_style.iterrows():
               orig_real = str(df.loc[idx, "descripcion"]).upper()
-              # Pinta de rojo si es crédito nuevo o viejo de Mango Center
               if orig_real.startswith("[CREDITO]") or "CREDITO MANGO CENTER" in orig_real:
                   styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
           return styles
@@ -703,7 +700,7 @@ with tab_reportes_gastos:
       def color_rojo_cruzado(df_to_style):
           styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
           for idx, row in df_to_style.iterrows():
-              if str(row["Origen de Fondos"]) == "CREDITO":
+              if str(df_to_style.loc[idx, "Origen de Fondos"]) == "CREDITO":
                   styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
           return styles
 
