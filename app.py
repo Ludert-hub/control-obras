@@ -43,7 +43,7 @@ def formatear_monto_venezuela(valor):
 
 
 # ==========================================
-# 🚨 SISTEMA DE ALERTA DE CRÉDITOS (MANGO CENTER > 13 DÍAS)
+# 🚨 ALERTA DE CRÉDITOS COMPACTA (>= 13 DÍAS)
 # ==========================================
 try:
   res_alertas = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
@@ -55,29 +55,41 @@ try:
     deudas_por_vencer = []
     for _, row in df_alt.iterrows():
       desc = str(row["descripcion"]).upper()
-      if "CREDITO MANGO CENTER" in desc:
+      # Detecta tanto los nuevos [CREDITO] como los viejos [CREDITO MANGO CENTER]
+      if "CREDITO" in desc:
         f_gasto = row["fecha_dt"]
         if pd.notnull(f_gasto):
           dias_transcurridos = (hoy - f_gasto.normalize()).days
-          # Alerta si han transcurrido 13 días o más desde la compra (faltan 2 días o menos para los 15)
           if dias_transcurridos >= 13:
             dias_restantes = max(0, 15 - dias_transcurridos)
+            
+            obs_txt = ""
+            if " | OBS:" in desc:
+              obs_txt = f" ({desc.split(' | OBS:')[1].strip()})"
+            elif " | OBSERVACIONES:" in desc:
+              obs_txt = f" ({desc.split(' | OBSERVACIONES:')[1].strip()})"
+            elif "MANGO CENTER" in desc:
+              obs_txt = " (MANGO CENTER)"
+
             deudas_por_vencer.append({
-                "id": row["id"],
                 "fecha": f_gasto.strftime("%d/%m/%Y"),
                 "obra": str(row["obra"]).upper(),
                 "monto": formatear_monto_venezuela(row["monto"]),
                 "dias": dias_transcurridos,
-                "restantes": dias_restantes
+                "restantes": dias_restantes,
+                "obs": obs_txt
             })
 
     if deudas_por_vencer:
-      st.error("🚨 **¡ATENCIÓN LUDER! TIENES CRÉDITOS DE 'CREDITO MANGO CENTER' PRÓXIMOS A VENCER (15 DÍAS):**")
+      alertas_html = """
+      <div style="background-color: #fff3f3; border-left: 4px solid #cc0000; padding: 8px 12px; margin-bottom: 15px; border-radius: 4px; font-size: 13px; color: #a80000;">
+        <b>🚨 Alerta de Créditos (Próximos a cumplir 15 días):</b><ul style="margin: 0; padding-left: 15px;">
+      """
       for deuda in deudas_por_vencer:
-        if deuda["restantes"] == 0:
-          st.warning(f"⚠️ ¡CRÉDITO VENCIDO! Factura del **{deuda['fecha']}** (Obra: **{deuda['obra']}**) por **Bs. {deuda['monto']}** cumplió o superó los 15 días (Han pasado {deuda['dias']} días). ¡Gestionar pago!")
-        else:
-          st.warning(f"⏳ Alerta de vencimiento: Factura del **{deuda['fecha']}** (Obra: **{deuda['obra']}**) por **Bs. {deuda['monto']}** tiene **{deuda['dias']} días** desde la compra (¡Quedan {deuda['restantes']} día(s) para completar los 15!).")
+        estado_txt = "¡VENCIDO!" if deuda["restantes"] == 0 else f"Quedan {deuda['restantes']} día(s)"
+        alertas_html += f"<li><b>{deuda['fecha']}</b> | Obra: <b>{deuda['obra']}</b>{deuda['obs']} | Bs. {deuda['monto']} | <b>{deuda['dias']} días transcurridos ({estado_txt})</b></li>"
+      alertas_html += "</ul></div>"
+      st.markdown(alertas_html, unsafe_allow_html=True)
 except Exception as e:
   pass
 
@@ -139,13 +151,13 @@ with tab_facturas:
         desc_str = str(r["descripcion"])
         if desc_str.startswith("[") and "]" in desc_str:
           orig = desc_str.split("]")[0].replace("[", "").strip()
-          if orig:
+          if orig and not orig.startswith("CREDITO"):
             lista_origenes.append(orig)
     lista_origenes_existentes = sorted(list(set(lista_origenes)))
   except Exception:
     lista_origenes_existentes = []
 
-  opciones_origen = ["-- SELECCIONAR ORIGEN --"] + lista_origenes_existentes + ["➕ OTRO ORIGEN NUEVO..."]
+  opciones_origen = ["-- SELECCIONAR ORIGEN --", "CREDITO"] + lista_origenes_existentes + ["➕ OTRO ORIGEN NUEVO..."]
   seleccion_origen = st.sidebar.selectbox("Origen de los Fondos", opciones_origen, key="sel_orig_gasto")
 
   if seleccion_origen == "➕ OTRO ORIGEN NUEVO...":
@@ -158,6 +170,11 @@ with tab_facturas:
 
   descripcion_input = st.sidebar.text_input("Descripción (Materiales, equipos...)", key="input_desc_gasto")
   descripcion_final = descripcion_input.strip().upper()
+
+  observaciones_final = ""
+  if origen_final == "CREDITO":
+    observaciones_input = st.sidebar.text_input("Observaciones / Proveedor (Ej. MANGO CENTER)", value="MANGO CENTER", key="input_obs_gasto")
+    observaciones_final = observaciones_input.strip().upper()
 
   archivo_adjunto = st.sidebar.file_uploader(
       "Adjuntar Recibo / Factura (Foto o Img)", type=["png", "jpg", "jpeg", "pdf"], key="file_gasto"
@@ -181,7 +198,11 @@ with tab_facturas:
           )
           url_comprobante = supabase.storage.from_("comprobantes").get_public_url(file_name)
 
-        desc_completa = f"[{origen_final}] {descripcion_final}" if origen_final else descripcion_final
+        if origen_final == "CREDITO":
+          obs_text = f" | Obs: {observaciones_final}" if observaciones_final else ""
+          desc_completa = f"[CREDITO] {descripcion_final}{obs_text}"
+        else:
+          desc_completa = f"[{origen_final}] {descripcion_final}" if origen_final else descripcion_final
 
         data = {
             "fecha": fecha_gasto.strftime("%Y-%m-%d"),
@@ -230,6 +251,28 @@ with tab_facturas:
       df_view["fecha_fmt"] = df_view["fecha_dt"].dt.strftime("%d/%m/%Y")
       df_view["monto_fmt"] = df_view["monto"].apply(formatear_monto_venezuela)
 
+      # Procesamiento inteligente para separar descripción y observaciones (incluso para registros viejos con MANGO CENTER)
+      descripciones_limpias, observaciones_lista = [], []
+      for d in df_view["descripcion"]:
+        d_str = str(d)
+        obs_val = ""
+        if " | OBS:" in d_str:
+          partes = d_str.split(" | OBS:")
+          d_str = partes[0]
+          obs_val = partes[1].strip()
+        elif " | OBSERVACIONES:" in d_str:
+          partes = d_str.split(" | OBSERVACIONES:")
+          d_str = partes[0]
+          obs_val = partes[1].strip()
+        elif "CREDITO MANGO CENTER" in d_str:
+          d_str = "[CREDITO]"
+          obs_val = "MANGO CENTER"
+        descripciones_limpias.append(d_str)
+        observaciones_lista.append(obs_val)
+
+      df_view["desc_limpia"] = descripciones_limpias
+      df_view["observaciones"] = observaciones_lista
+
       obras_disp = ["Todas"] + list(df_view["obra"].unique())
       obra_sel = st.selectbox("Filtrar gastos por Obra:", obras_disp, key="filtro_gasto")
 
@@ -243,15 +286,19 @@ with tab_facturas:
           value=f"Bs. {formatear_monto_venezuela(total_monto)}",
       )
 
-      df_final_display = df_view[["fecha_fmt", "obra", "monto_fmt", "descripcion", "comprobante_url"]].copy()
-      df_final_display.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción", "Comprobante"]
+      df_final_display = df_view[["fecha_fmt", "obra", "monto_fmt", "desc_limpia", "observaciones", "comprobante_url"]].copy()
+      df_final_display.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción", "Observaciones", "Comprobante"]
 
-      def resaltar_creditos(row):
-          if "CREDITO MANGO CENTER" in str(row["Descripción"]):
-              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
-          return [''] * len(row)
+      def color_rojo_si_credito(df_to_style):
+          styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
+          for idx, row in df_to_style.iterrows():
+              orig_real = str(df.loc[idx, "descripcion"]).upper()
+              # Pinta de rojo si es crédito nuevo o viejo de Mango Center
+              if orig_real.startswith("[CREDITO]") or "CREDITO MANGO CENTER" in orig_real:
+                  styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
+          return styles
 
-      st.dataframe(df_final_display.style.apply(resaltar_creditos, axis=1), use_container_width=True, hide_index=True)
+      st.dataframe(df_final_display.style.apply(color_rojo_si_credito, axis=None), use_container_width=True, hide_index=True)
 
       st.markdown("### 🔍 Ver Comprobante Adjunto de un Gasto")
       with st.expander("Abrir imagen o factura de pago"):
@@ -291,7 +338,20 @@ with tab_facturas:
         desc_actual_str = str(gasto_actual['descripcion'])
         orig_actual = ""
         solo_desc = desc_actual_str
-        if desc_actual_str.startswith("[") and "]" in desc_actual_str:
+        obs_actual_val = ""
+        
+        if " | OBS:" in desc_actual_str:
+            partes = desc_actual_str.split(" | OBS:")
+            desc_part = partes[0]
+            obs_actual_val = partes[1].strip()
+            if desc_part.startswith("[") and "]" in desc_part:
+                orig_actual = desc_part.split("]")[0].replace("[", "").strip()
+                solo_desc = desc_part.split("]")[1].strip()
+        elif "CREDITO MANGO CENTER" in desc_actual_str:
+            orig_actual = "CREDITO"
+            obs_actual_val = "MANGO CENTER"
+            solo_desc = ""
+        elif desc_actual_str.startswith("[") and "]" in desc_actual_str:
             orig_actual = desc_actual_str.split("]")[0].replace("[", "").strip()
             solo_desc = desc_actual_str.split("]")[1].strip()
 
@@ -330,16 +390,17 @@ with tab_facturas:
                 d = str(r["descripcion"])
                 if d.startswith("[") and "]" in d:
                     o = d.split("]")[0].replace("[", "").strip()
-                    if o: lista_origenes_edit.append(o)
+                    if o and o != "CREDITO": lista_origenes_edit.append(o)
             lista_origenes_edit = sorted(list(set(lista_origenes_edit)))
 
-            if orig_actual in lista_origenes_edit:
-                idx_orig = lista_origenes_edit.index(orig_actual) + 1
+            opciones_orig_edit = ["-- SELECCIONAR ORIGEN --", "CREDITO"] + lista_origenes_edit + ["➕ OTRO ORIGEN NUEVO..."]
+            
+            if orig_actual in opciones_orig_edit:
+                idx_orig = opciones_orig_edit.index(orig_actual)
             else:
                 idx_orig = 0
 
-            opciones_orig_edit = ["-- SELECCIONAR ORIGEN --"] + lista_origenes_edit + ["➕ OTRO ORIGEN NUEVO..."]
-            sel_orig_edit = st.selectbox("Origen de los Fondos", opciones_orig_edit, index=idx_orig if idx_orig < len(opciones_orig_edit) else 0, key="edit_sel_orig")
+            sel_orig_edit = st.selectbox("Origen de los Fondos", opciones_orig_edit, index=idx_orig, key="edit_sel_orig")
 
             if sel_orig_edit == "➕ OTRO ORIGEN NUEVO...":
                 input_orig_edit_nuevo = st.text_input("Escribe el NUEVO origen de fondos:", key="edit_input_orig_nuevo")
@@ -350,11 +411,19 @@ with tab_facturas:
                 origen_final_edit = orig_actual
 
             nueva_desc_input = st.text_input("Descripción", value=solo_desc).strip().upper()
+            
+            nueva_obs_input = ""
+            if origen_final_edit == "CREDITO":
+                nueva_obs_input = st.text_input("Observaciones / Proveedor", value=obs_actual_val if obs_actual_val else "MANGO CENTER", key="edit_input_obs").strip().upper()
 
             btn_guardar_cambios = st.form_submit_button("💾 Guardar Cambios del Gasto", type="primary")
             
             if btn_guardar_cambios:
-                desc_completa_edit = f"[{origen_final_edit}] {nueva_desc_input}" if origen_final_edit else nueva_desc_input
+                if origen_final_edit == "CREDITO":
+                    obs_text_edit = f" | Obs: {nueva_obs_input}" if nueva_obs_input else ""
+                    desc_completa_edit = f"[CREDITO] {nueva_desc_input}{obs_text_edit}"
+                else:
+                    desc_completa_edit = f"[{origen_final_edit}] {nueva_desc_input}" if origen_final_edit else nueva_desc_input
                 
                 supabase.table("registros").update({
                     "fecha": nueva_fecha.strftime("%Y-%m-%d"),
@@ -506,7 +575,7 @@ with tab_tareas:
 
 
 # ==========================================
-# SECCIÓN 3: REPORTES, DESGLOSE Y EXPORTACIÓN
+# SECCIÓN 3: REPORTES Y CONTROL DE CRÉDITOS
 # ==========================================
 tab_reportes_gastos, tab_reportes_creditos = st.tabs(["📊 Reportes de Gastos", "🚨 Control de Créditos / Deudas"])
 
@@ -531,7 +600,7 @@ with tab_reportes_gastos:
       df_rep["obra"] = df_rep["obra"].astype(str).str.upper()
 
       # --- FILTROS DE DESGLOSE INTERACTIVOS ---
-      st.markdown("### 🎛️️ Filtrar Datos para Exportar")
+      st.markdown("### 🎛 Filtrar Datos para Exportar")
       col_f1, col_f2 = st.columns(2)
       
       with col_f1:
@@ -555,15 +624,39 @@ with tab_reportes_gastos:
       df_mostrar["Fecha"] = df_mostrar["fecha_dt"].dt.strftime("%d/%m/%Y")
       df_mostrar["Monto (Bs.)"] = df_mostrar["monto"].apply(formatear_monto_venezuela)
       
-      df_mostrar_final = df_mostrar[["Fecha", "obra", "Monto (Bs.)", "descripcion"]].copy()
-      df_mostrar_final.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción"]
+      desc_rep, obs_rep = [], []
+      for d in df_mostrar["descripcion"]:
+        d_str = str(d)
+        o_str = ""
+        if " | OBS:" in d_str:
+          p = d_str.split(" | OBS:")
+          d_str = p[0]
+          o_str = p[1].strip()
+        elif " | OBSERVACIONES:" in d_str:
+          p = d_str.split(" | OBSERVACIONES:")
+          d_str = p[0]
+          o_str = p[1].strip()
+        elif "CREDITO MANGO CENTER" in d_str:
+          d_str = "[CREDITO]"
+          o_str = "MANGO CENTER"
+        desc_rep.append(d_str)
+        obs_rep.append(o_str)
 
-      def resaltar_creditos_rep(row):
-          if "CREDITO MANGO CENTER" in str(row["Descripción"]):
-              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
-          return [''] * len(row)
+      df_mostrar["desc_limpia"] = desc_rep
+      df_mostrar["observaciones"] = obs_rep
 
-      st.dataframe(df_mostrar_final.style.apply(resaltar_creditos_rep, axis=1), use_container_width=True, hide_index=True)
+      df_mostrar_final = df_mostrar[["Fecha", "obra", "Monto (Bs.)", "desc_limpia", "observaciones"]].copy()
+      df_mostrar_final.columns = ["Fecha", "Obra", "Monto (Bs.)", "Descripción", "Observaciones"]
+
+      def color_rojo_si_credito_rep(df_to_style):
+          styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
+          for idx, row in df_to_style.iterrows():
+              orig_real = str(df_rep.loc[idx, "descripcion"]).upper()
+              if orig_real.startswith("[CREDITO]") or "CREDITO MANGO CENTER" in orig_real:
+                  styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
+          return styles
+
+      st.dataframe(df_mostrar_final.style.apply(color_rojo_si_credito_rep, axis=None), use_container_width=True, hide_index=True)
 
       st.markdown("---")
       
@@ -607,12 +700,14 @@ with tab_reportes_gastos:
       df_cruzado["Monto Total (Bs.)"] = df_cruzado["monto"].apply(formatear_monto_venezuela)
       df_cruzado.columns = ["Obra", "Origen de Fondos", "Monto Total (Bs.)"]
       
-      def resaltar_creditos_cruzado(row):
-          if "CREDITO MANGO CENTER" in str(row["Origen de Fondos"]):
-              return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold'] * len(row)
-          return [''] * len(row)
+      def color_rojo_cruzado(df_to_style):
+          styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
+          for idx, row in df_to_style.iterrows():
+              if str(row["Origen de Fondos"]) == "CREDITO":
+                  styles.loc[idx, :] = 'background-color: #ffe6e6; color: #cc0000; font-weight: bold'
+          return styles
 
-      st.dataframe(df_cruzado.style.apply(resaltar_creditos_cruzado, axis=1), use_container_width=True, hide_index=True)
+      st.dataframe(df_cruzado.style.apply(color_rojo_cruzado, axis=None), use_container_width=True, hide_index=True)
 
     else:
       st.info("No hay suficientes datos de gastos para generar reportes.")
@@ -623,8 +718,8 @@ with tab_reportes_gastos:
 # SECCIÓN 3.2: CONTROL ESPECÍFICO DE CRÉDITOS PENDIENTES
 # ==========================================
 with tab_reportes_creditos:
-  st.subheader("🚨 Control y Seguimiento de Créditos Pendientes (Mango Center)")
-  st.markdown("Listado exclusivo de deudas activas a crédito con cálculo de días transcurridos hacia el límite de 15 días.")
+  st.subheader("🚨 Control y Seguimiento de Créditos Pendientes")
+  st.markdown("Listado exclusivo de deudas activas con origen **CREDITO** y cálculo de días hacia el límite de 15 días.")
 
   try:
     res_cred = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
@@ -632,8 +727,7 @@ with tab_reportes_creditos:
       df_cred = pd.DataFrame(res_cred.data)
       df_cred["fecha_dt"] = pd.to_datetime(df_cred["fecha"], errors="coerce")
       
-      # Filtrar solo los que tengan CREDITO MANGO CENTER
-      df_cred = df_cred[df_cred["descripcion"].astype(str).str.upper().str.contains("CREDITO MANGO CENTER")].copy()
+      df_cred = df_cred[df_cred["descripcion"].astype(str).str.upper().str.startswith("[CREDITO]") | df_cred["descripcion"].astype(str).str.upper().str.contains("CREDITO MANGO CENTER")].copy()
 
       if not df_cred.empty:
         hoy = pd.Timestamp.now().normalize()
@@ -658,7 +752,7 @@ with tab_reportes_creditos:
         df_cg = pd.DataFrame(lista_creditos_gestion)
         df_cg = df_cg.sort_values(by="Días Transcurridos", ascending=False).reset_index(drop=True)
 
-        st.metric("Total Deuda Activa (Mango Center)", f"Bs. {formatear_monto_venezuela(df_cg['raw_monto'].sum())}")
+        st.metric("Total Deuda Activa (Créditos)", f"Bs. {formatear_monto_venezuela(df_cg['raw_monto'].sum())}")
 
         df_cg_display = df_cg[["Fecha Compra", "Obra", "Descripción", "Monto (Bs.)", "Días Transcurridos", "Estatus Crédito"]]
         
@@ -669,7 +763,7 @@ with tab_reportes_creditos:
 
         st.dataframe(df_cg_display.style.apply(resaltar_tabla_creditos, axis=1), use_container_width=True, hide_index=True)
       else:
-        st.success("¡Excelente noticia! No hay créditos pendientes con 'CREDITO MANGO CENTER' en este momento.")
+        st.success("¡Excelente noticia! No hay créditos pendientes activos en este momento.")
     else:
       st.info("No hay registros disponibles.")
   except Exception as e:
