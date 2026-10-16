@@ -10,48 +10,54 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS avanzados para botones grandes táctiles tipo App Móvil y diseño moderno
+# Estilos CSS con botones 3D estilo Neón / Brillo (Igual a tu referencia)
 st.markdown(
     """
     <style>
     .main {
         background-color: #0e1117;
     }
-    /* Botones grandes y táctiles para teléfonos */
+    
+    /* Efecto 3D / Brillo tipo Píldora para los botones de Streamlit */
     .stButton>button {
         width: 100%;
-        background-color: #238636;
+        background: linear-gradient(to bottom, #2ea043, #1f7b31);
         color: white;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
-        padding: 12px 20px;
-        border-radius: 12px;
-        border: none;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        padding: 14px 24px;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.4);
+        transition: all 0.2s ease;
         margin-top: 10px;
         margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
+    
     .stButton>button:hover {
-        background-color: #2ea043;
+        background: linear-gradient(to bottom, #3fb950, #2ea043);
+        box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.6), 0 8px 16px rgba(0, 0, 0, 0.6);
+        transform: translateY(-2px);
     }
-    /* Botón secundario de peligro/eliminar */
-    .btn-danger>button {
-        background-color: #da3633 !important;
-    }
+
+    /* Tarjetas KPI y Alertas flotantes */
     .metric-card {
         background-color: #161b22;
         border: 1px solid #30363d;
-        padding: 15px;
-        border-radius: 12px;
+        padding: 20px;
+        border-radius: 16px;
         text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
     }
     .alert-card {
         background-color: #2d1515;
         border-left: 6px solid #da3633;
-        padding: 15px;
-        border-radius: 8px;
+        padding: 18px;
+        border-radius: 12px;
         margin-bottom: 20px;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
     }
     h1, h2, h3, h4 {
         color: #f0f6fc;
@@ -66,11 +72,11 @@ st.markdown(
     "<h1>🏗️ Control de Obras y Materiales</h1>", unsafe_allow_html=True
 )
 st.markdown(
-    "<p style='color: #8b949e; font-size: 16px;'>🚀 Sistema táctil optimizado en tiempo real (PC y Teléfonos).</p>",
+    "<p style='color: #8b949e; font-size: 16px;'>⚡ Panel táctil optimizado con diseño moderno.</p>",
     unsafe_allow_html=True,
 )
 
-# Sección de Alerta de Créditos Moderna
+# Sección de Alerta de Créditos
 with st.container():
   st.markdown(
       """
@@ -88,7 +94,7 @@ with st.container():
       unsafe_allow_html=True,
   )
 
-# Pestañas principales de navegación táctil
+# Pestañas de navegación
 tab1, tab2, tab3 = st.tabs(
     ["💰 Facturas y Gastos", "📋 Tareas y Cuadrilla", "📊 Reportes y Gráficos"]
 )
@@ -96,14 +102,13 @@ tab1, tab2, tab3 = st.tabs(
 with tab1:
   st.markdown("### 📊 Resumen General de Gastos")
 
-  # Tarjetas de Estadísticas Grandes (Táctiles / Visuales)
   col_m1, col_m2 = st.columns(2)
   with col_m1:
     st.markdown(
         """
         <div class="metric-card">
             <p style="color: #8b949e; margin:0; font-size: 14px;">TOTAL GENERAL</p>
-            <h3 style="color: #3fb950; margin:5px 0 0 0;">Bs. 12.155.247,88</h3>
+            <h3 style="color: #3fb950; margin:8px 0 0 0;">Bs. 12.155.247,88</h3>
         </div>
         """,
         unsafe_allow_html=True,
@@ -112,8 +117,8 @@ with tab1:
     st.markdown(
         """
         <div class="metric-card">
-            <p style="color: #8b949e; margin:0; font-size: 14px;">ESTADO DE REGISTROS</p>
-            <h3 style="color: #58a6ff; margin:5px 0 0 0;">Sincronizado ⚡</h3>
+            <p style="color: #8b949e; margin:0; font-size: 14px;">ESTADO DEL SISTEMA</p>
+            <h3 style="color: #58a6ff; margin:8px 0 0 0;">En Línea ⚡</h3>
         </div>
         """,
         unsafe_allow_html=True,
@@ -124,7 +129,6 @@ with tab1:
       "🔍 Filtrar gastos por Obra:", ["Todas", "ESOBADES", "SRA. BARBARA"]
   )
 
-  # Datos de ejemplo de la tabla
   data_gastos = {
       "Fecha": [
           "12/10/2026",
@@ -147,8 +151,7 @@ with tab1:
   df_gastos = pd.DataFrame(data_gastos)
   st.dataframe(df_gastos, use_container_width=True)
 
-  # Botones grandes táctiles para acciones rápidas en el teléfono
-  st.markdown("### ⚡ Acciones Rápidas")
+  st.markdown("### ⚡ Botones de Acción Táctil")
   col_b1, col_b2, col_b3 = st.columns(3)
   with col_b1:
     btn_ver = st.button("👁️ Ver Comprobante")
@@ -158,13 +161,11 @@ with tab1:
     btn_del = st.button("🗑️ Eliminar Gasto")
 
   if btn_ver:
-    st.info(
-        "Abriendo visor de imagen o factura de pago seleccionada..."
-    )  # Conecta aquí tu lógica real
+    st.info("Abriendo visor de comprobante...")
   if btn_mod:
-    st.warning("Abriendo panel de corrección de gasto...")
+    st.warning("Panel de modificación activado...")
   if btn_del:
-    st.error("Modo de eliminación activado.")
+    st.error("Modo de eliminación seleccionado...")
 
 with tab2:
   st.markdown("### 📋 Lista de Tareas y Pendientes de Obra")
@@ -177,8 +178,6 @@ with tab2:
         "Descripción de la tarea", placeholder="Ej. Esmalte en columnas..."
     )
     t_estado = st.selectbox("Estado inicial", ["PENDIENTE", "LISTO"])
-
-    # Botón grande tipo app móvil dentro del formulario
     submit_tarea = st.form_submit_button("➕ AGREGAR NUEVA TAREA")
 
   data_tareas = {
@@ -203,18 +202,16 @@ with tab3:
   with col_f2:
     st.selectbox("Filtrar por Origen de Fondos:", ["TODOS", "CRÉDITO", "CONTADO"])
 
-  # Botones grandes táctiles para compartir y exportar
   col_e1, col_e2 = st.columns(2)
   with col_e1:
-    if st.button("📥 Descargar Reporte Excel (CSV)"):
-      st.success("¡Reporte listo para descargar!")
+    if st.button("📥 Descargar Excel (CSV)"):
+      st.success("¡Reporte generado!")
   with col_e2:
-    if st.button("💬 Enviar Cuadrilla por WhatsApp"):
-      st.success("¡Enlace de WhatsApp generado con éxito!")
+    if st.button("💬 Enviar WhatsApp"):
+      st.success("¡Enlace de WhatsApp listo!")
 
   st.markdown("<br>", unsafe_allow_html=True)
 
-  # Gráfico interactivo moderno (Corregido y sin errores de ejes)
   chart_data = pd.DataFrame(
       {
           "Obra": ["ESOBADES", "SRA. BARBARA", "PDVSA", "ECOVIDA"],
@@ -235,4 +232,5 @@ with tab3:
       paper_bgcolor="rgba(0,0,0,0)",
       font_color="#f0f6fc",
   )
+  fig.update_traces(marker=dict(line=dict(width=1, color="white")))
   st.plotly_chart(fig, use_container_width=True)
