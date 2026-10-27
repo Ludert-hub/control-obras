@@ -63,12 +63,6 @@ st.markdown("""
         font-size: 14px;
         white-space: nowrap;
     }
-    .orden-id {
-        color: #444;
-        font-weight: 600;
-        font-size: 14px;
-        white-space: nowrap;
-    }
     .concepto-txt {
         color: #333;
         font-size: 14px;
@@ -326,9 +320,8 @@ elif st.session_state.vista == "ORDENES":
 
         st.markdown("""
         <div style="display:flex; font-weight:700; color:#333; padding:8px 0; border-bottom:2px solid #ccc; font-size:14px;">
-            <div style="width:14%;">ORDEN</div>
-            <div style="width:30%;">Monto</div>
-            <div style="width:46%;">Concepto</div>
+            <div style="width:40%;">Monto</div>
+            <div style="width:50%;">Concepto</div>
             <div style="width:10%; text-align:right;">Ver</div>
         </div>
         """, unsafe_allow_html=True)
@@ -348,9 +341,7 @@ elif st.session_state.vista == "ORDENES":
                 if not concepto_limpio:
                     concepto_limpio = str(row["obra"])
 
-                c1, c2, c3, c4 = st.columns([0.7, 1.6, 2.8, 0.5])
-                with c1:
-                    st.markdown(f"<div class='orden-id'>{row['id']}</div>", unsafe_allow_html=True)
+                c2, c3, c4 = st.columns([2.2, 3.5, 0.6])
                 with c2:
                     monto_str = f"Bs.{formatear_monto_venezuela(row['monto'])}" if row["monto"] > 0 else ""
                     st.markdown(f"<div class='monto-azul'>{monto_str}</div>", unsafe_allow_html=True)
