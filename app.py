@@ -559,4 +559,56 @@ elif st.session_state.vista == "TAREAS":
 
     with st.form("nueva_tarea_form"):
         t_obra = st.text_input("Obra", value="ESOBADES").strip().upper()
-        t_desc = st.text_input("
+        t_desc = st.text_input("Descripción de Actividad / Asistencia").strip().upper()
+        if st.form_submit_button("➕ Registrar Actividad", type="primary", use_container_width=True):
+            if t_desc:
+                supabase.table("registros").insert({
+                    "fecha": datetime.now().strftime("%Y-%m-%d"),
+                    "monto": 0.0,
+                    "obra": t_obra,
+                    "descripcion": t_desc,
+                    "estado": "TAREA_PENDIENTE"
+                }).execute()
+                st.rerun()
+
+    res_t = supabase.table("registros").select("*").like("estado", "TAREA_%").execute()
+    if res_t.data:
+        for t in reversed(res_t.data):
+            est = "✅ LISTO" if "LISTO" in str(t["estado"]) else "⏳ PENDIENTE"
+            col_a, col_b, col_c = st.columns([4, 1.5, 1])
+            col_a.write(f"**{t['obra']}** - {t['descripcion']} ({t['fecha']})")
+            if col_b.button(est, key=f"t_est_{t['id']}"):
+                nuevo_est = "TAREA_PENDIENTE" if "LISTO" in str(t["estado"]) else "TAREA_LISTO"
+                supabase.table("registros").update({"estado": nuevo_est}).eq("id", t["id"]).execute()
+                st.rerun()
+            if col_c.button("🗑️", key=f"t_del_{t['id']}"):
+                supabase.table("registros").delete().eq("id", t["id"]).execute()
+                st.rerun()
+
+
+# ==============================================================================
+# VISTA 6: REPORTES Y EXPORTACIÓN EXCEL / WHATSAPP
+# ==============================================================================
+elif st.session_state.vista == "REPORTES":
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("⬅️"):
+            ir_a("MENU")
+            st.rerun()
+    with c2:
+        st.markdown("<h3 style='margin:0; color:#155A9A;'>REPORTES Y EXPORTACIÓN</h3>", unsafe_allow_html=True)
+
+    res_rep = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
+    if res_rep.data:
+        df_rep = pd.DataFrame(res_rep.data)
+        df_rep["obra"] = df_rep["obra"].fillna("ESOBADES").astype(str).str.upper()
+        st.metric("Total General Registrado", f"Bs. {formatear_monto_venezuela(df_rep['monto'].sum())}")
+        
+        csv_data = df_rep[["id", "fecha", "obra", "monto", "descripcion"]].to_csv(index=False, sep=";", encoding="utf-8-sig")
+        st.download_button("📥 Descargar Base de Datos en Excel (CSV)", data=csv_data, file_name="Ordenes_ESOBADES.csv", mime="text/csv", use_container_width=True)
+
+# --- BARRA INFERIOR FIJA PARA VOLVER AL MENÚ ---
+st.markdown("---")
+if st.button("🏠 MENU PRINCIPAL", use_container_width=True):
+    ir_a("MENU")
+    st.rerun()
