@@ -235,7 +235,7 @@ def mostrar_alerta_creditos():
 if st.session_state.vista == "MENU":
     st.markdown("""
     <div class="top-bar">
-        <span class="top-bar-title">☰ &nbsp; SYSSA, C.A. - MENU</span>
+        <span class="top-bar-title">☰ &nbsp; OPERACION ARO, C.A. - MENU</span>
         <span>🔍 &nbsp; ☑️</span>
     </div>
     """, unsafe_allow_html=True)
