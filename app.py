@@ -60,16 +60,21 @@ st.markdown("""
     .monto-azul {
         color: #155A9A;
         font-weight: 700;
-        font-size: 15px;
+        font-size: 14px;
+        white-space: nowrap;
     }
     .orden-id {
         color: #444;
         font-weight: 600;
-        font-size: 15px;
+        font-size: 14px;
+        white-space: nowrap;
     }
     .concepto-txt {
         color: #333;
-        font-size: 15px;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .detail-label {
         color: #666;
@@ -99,10 +104,18 @@ st.markdown("""
         margin-bottom: 10px;
     }
 
-    /* Forzar que las columnas de Streamlit se mantengan horizontales y alineadas en una sola línea */
+    /* Corrección total para móviles: columnas horizontales sin solapamiento */
     div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
         align-items: center !important;
-        gap: 0.2rem !important;
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+    }
+    div[data-testid="column"] {
+        width: auto !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
