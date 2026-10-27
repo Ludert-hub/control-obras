@@ -6,7 +6,7 @@ import urllib.parse
 
 # --- CONFIGURACION DE LA PAGINA ---
 st.set_page_config(
-    page_title="OPERACION ARO, C.A. - Control de Obras",
+    page_title="OPERACION EXTERNA - Control de Obras",
     page_icon="🏗️",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -60,15 +60,16 @@ st.markdown("""
     .monto-azul {
         color: #155A9A;
         font-weight: 700;
-        font-size: 14px;
-        white-space: nowrap;
+        font-size: 15px;
+    }
+    .orden-id {
+        color: #444;
+        font-weight: 600;
+        font-size: 15px;
     }
     .concepto-txt {
         color: #333;
-        font-size: 14px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        font-size: 15px;
     }
     .detail-label {
         color: #666;
@@ -104,7 +105,7 @@ st.markdown("""
         flex-direction: row !important;
         align-items: center !important;
         flex-wrap: nowrap !important;
-        gap: 2px !important;
+        gap: 4px !important;
     }
     div[data-testid="column"] {
         width: auto !important;
@@ -116,6 +117,7 @@ st.markdown("""
     div[data-testid="column"] {
         padding: 0 2px !important;
     }
+
 
     /* Forzar diseño horizontal en móviles y evitar apilamiento */
     @media (max-width: 768px) {
@@ -130,6 +132,32 @@ st.markdown("""
             flex: 1 1 auto !important;
             min-width: 0 !important;
             width: auto !important;
+            padding: 0 1px !important;
+        }
+    }
+
+    /* Columnas ultra compactas y pegadas sin espacios vacíos */
+    div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+        gap: 2px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div[data-testid="column"] {
+        width: auto !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 2px !important;
+    }
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            gap: 1px !important;
+        }
+        div[data-testid="column"] {
             padding: 0 1px !important;
         }
     }
@@ -235,7 +263,7 @@ def mostrar_alerta_creditos():
 if st.session_state.vista == "MENU":
     st.markdown("""
     <div class="top-bar">
-        <span class="top-bar-title">☰ &nbsp; OPERACION ARO, C.A. - MENU</span>
+        <span class="top-bar-title">☰ &nbsp; OPERACION EXTERNA - MENU</span>
         <span>🔍 &nbsp; ☑️</span>
     </div>
     """, unsafe_allow_html=True)
@@ -341,7 +369,7 @@ elif st.session_state.vista == "ORDENES":
                 if not concepto_limpio:
                     concepto_limpio = str(row["obra"])
 
-                c2, c3, c4 = st.columns([2.2, 3.5, 0.6])
+                c2, c3, c4 = st.columns([1.8, 4.0, 0.5])
                 with c2:
                     monto_str = f"Bs.{formatear_monto_venezuela(row['monto'])}" if row["monto"] > 0 else ""
                     st.markdown(f"<div class='monto-azul'>{monto_str}</div>", unsafe_allow_html=True)
