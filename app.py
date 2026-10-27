@@ -122,6 +122,23 @@ st.markdown("""
     div[data-testid="column"] {
         padding: 0 2px !important;
     }
+
+    /* Forzar diseño horizontal en móviles y evitar apilamiento */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: row !important;
+            display: flex !important;
+            align-items: center !important;
+            flex-wrap: nowrap !important;
+            gap: 2px !important;
+        }
+        div[data-testid="column"] {
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            width: auto !important;
+            padding: 0 1px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
