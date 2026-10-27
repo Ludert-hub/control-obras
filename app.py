@@ -194,7 +194,6 @@ def mostrar_alerta_creditos():
                 if "CREDITO" in desc and pd.notnull(row["fecha_dt"]):
                     dias = (hoy - row["fecha_dt"].normalize()).days
                     if dias >= 13:
-                        restantes = max(0, 15 - dias)
                         deudas.append(f"<li><b>{row['fecha_dt'].strftime('%d/%m/%Y')}</b> | {str(row['obra']).upper()} | Bs. {formatear_monto_venezuela(row['monto'])} ({dias} días)</li>")
             if deudas:
                 st.markdown(f"""
@@ -258,7 +257,6 @@ if st.session_state.vista == "MENU":
 # VISTA 2: LISTADO DE ÓRDENES AGRUPADO POR FECHA (Estilo Imagen 2)
 # ==============================================================================
 elif st.session_state.vista == "ORDENES":
-    # Barra de navegación superior
     c_nav1, c_nav2, c_nav3 = st.columns([1, 4, 1])
     with c_nav1:
         if st.button("⬅️", help="Volver al Menú"):
@@ -270,7 +268,6 @@ elif st.session_state.vista == "ORDENES":
         if st.button("🔄", help="Sincronizar"):
             st.rerun()
 
-    # Botón destacado para Agregar (+) y Filtro rápido
     col_top_a, col_top_b = st.columns([2, 1])
     try:
         response = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
@@ -296,7 +293,6 @@ elif st.session_state.vista == "ORDENES":
         if obra_filtro != "TODAS LAS OBRAS":
             df = df[df["obra"] == obra_filtro]
 
-        # Cabecera de columnas estilo AppSheet
         st.markdown("""
         <div style="display:flex; font-weight:700; color:#333; padding:8px 0; border-bottom:2px solid #ccc; font-size:14px;">
             <div style="width:18%;">ORDEN</div>
@@ -306,19 +302,16 @@ elif st.session_state.vista == "ORDENES":
         </div>
         """, unsafe_allow_html=True)
 
-        # Agrupar por fecha manteniendo el orden descendente
         for fecha_val, grupo in df.groupby("fecha_dt", sort=False):
             subtotal_dia = grupo["monto"].sum()
             fecha_texto = fecha_espanol(fecha_val)
             
-            # Encabezado de fecha con su subtotal gris al lado
             st.markdown(f"""
             <div class="date-header">
                 {fecha_texto} <span class="subtotal-badge">Bs.{formatear_monto_venezuela(subtotal_dia)}</span>
             </div>
             """, unsafe_allow_html=True)
 
-            # Filas de operaciones de ese día
             for _, row in grupo.iterrows():
                 _, concepto_limpio, _ = desglosar_descripcion(row["descripcion"])
                 if not concepto_limpio:
@@ -333,7 +326,6 @@ elif st.session_state.vista == "ORDENES":
                 with c3:
                     st.markdown(f"<div class='concepto-txt'>{concepto_limpio}</div>", unsafe_allow_html=True)
                 with c4:
-                    # Al tocar este botón abre la pantalla Details de inmediato
                     if st.button("✏️", key=f"open_{row['id']}", help="Ver detalles y modificar"):
                         ir_a("DETALLE", row.to_dict())
                         st.rerun()
@@ -354,7 +346,6 @@ elif st.session_state.vista == "DETALLE":
         ir_a("ORDENES")
         st.rerun()
 
-    # Barra Superior con Flecha Atrás, Título "Details" y Papelera de Borrado
     c_top1, c_top2, c_top3 = st.columns([1, 4, 1.5])
     with c_top1:
         if st.button("⬅️", key="back_from_detail"):
@@ -371,7 +362,6 @@ elif st.session_state.vista == "DETALLE":
 
     st.markdown("---")
 
-    # Extraer URL de imagen si tiene comprobante adjunto
     estado_str = str(reg.get("estado", ""))
     url_foto = estado_str.split("URL:")[1] if "URL:" in estado_str else ""
 
@@ -383,7 +373,6 @@ elif st.session_state.vista == "DETALLE":
     origen_val, concepto_val, obs_val = desglosar_descripcion(reg.get("descripcion", ""))
     fecha_dt = pd.to_datetime(reg.get("fecha"), errors="coerce")
 
-    # Campos estilo Imagen 5
     st.markdown(f"""
     <div class="detail-label">Concepto</div>
     <div class="detail-value">{concepto_val or 'Sin descripción'}</div>
@@ -411,7 +400,6 @@ elif st.session_state.vista == "DETALLE":
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    # Botón Flotante / Directo para Modificar sin buscar en otra pantalla
     if st.button("✏️ MODIFICAR ESTA OPERACIÓN", type="primary", use_container_width=True):
         ir_a("FORMULARIO", reg, "EDITAR")
         st.rerun()
@@ -426,7 +414,6 @@ elif st.session_state.vista == "FORMULARIO":
 
     titulo_form = f"Editar Orden #{reg_actual.get('id')}" if es_edicion else "Nueva Orden de Compra"
 
-    # Encabezado
     c_f1, c_f2 = st.columns([1, 5])
     with c_f1:
         if st.button("⬅️", key="back_form"):
@@ -435,7 +422,6 @@ elif st.session_state.vista == "FORMULARIO":
     with c_f2:
         st.markdown(f"<h3 style='margin:0; color:#155A9A;'>{titulo_form}</h3>", unsafe_allow_html=True)
 
-    # Obtener listas dinámicas de Obras y próximo número de ORDEN
     try:
         res_all = supabase.table("registros").select("id, obra").execute()
         if res_all.data:
@@ -451,7 +437,6 @@ elif st.session_state.vista == "FORMULARIO":
     if "ESOBADES" not in obras_existentes:
         obras_existentes.insert(0, "ESOBADES")
 
-    # Valores por defecto si estamos editando
     id_mostrar = reg_actual.get("id", proximo_id)
     monto_def = float(reg_actual.get("monto", 0.0)) if es_edicion else None
     origen_def, concepto_def, obs_def = desglosar_descripcion(reg_actual.get("descripcion", "")) if es_edicion else ("PUNTO", "", "")
@@ -465,7 +450,6 @@ elif st.session_state.vista == "FORMULARIO":
     # --- CAMPOS DEL FORMULARIO ---
     st.text_input("ORDEN", value=str(id_mostrar), disabled=True)
 
-    # Selector de Obra (con ESOBADES por defecto)
     opciones_obra = obras_existentes + ["➕ OTRA OBRA NUEVA..."]
     idx_obra = opciones_obra.index(obra_def) if obra_def in opciones_obra else 0
     sel_obra = st.selectbox("Obra / Proyecto", opciones_obra, index=idx_obra)
@@ -488,7 +472,6 @@ elif st.session_state.vista == "FORMULARIO":
     fecha_guardar = st.date_input("Fecha_Operacion", value=fecha_def, format="DD/MM/YYYY")
     hora_guardar = st.time_input("Hora_Operacion", value=datetime.now().time())
 
-    # Botones de Método de Pago / Origen de Fondos (Estilo Imagen 3 y 4)
     metodos_base = ["PUNTO", "PAGO MOVIL", "INVERSION PROPIA", "ECOVIDA", "CREDITO"]
     if origen_def and origen_def.upper() not in metodos_base:
         metodos_base.append(origen_def.upper())
@@ -512,7 +495,6 @@ elif st.session_state.vista == "FORMULARIO":
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    # Botones Inferiores: Cancel | Save
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         if st.button("Cancel", use_container_width=True):
@@ -526,7 +508,6 @@ elif st.session_state.vista == "FORMULARIO":
                 st.error("Por favor ingresa el Concepto.")
             else:
                 try:
-                    # Conservar foto anterior si estamos editando y no se subió una nueva
                     est_anterior = str(reg_actual.get("estado", "REGISTRADO"))
                     url_comprobante = est_anterior.split("URL:")[1] if "URL:" in est_anterior else ""
 
@@ -556,7 +537,7 @@ elif st.session_state.vista == "FORMULARIO":
                         st.toast("¡Operación actualizada con éxito!")
                         ir_a("DETALLE", datos_guardar)
                     else:
-                         supabase.table("registros").insert(datos_guardar).execute()
+                        supabase.table("registros").insert(datos_guardar).execute()
                         st.toast("¡Nueva orden registrada!")
                         ir_a("ORDENES")
                     st.rerun()
@@ -578,56 +559,4 @@ elif st.session_state.vista == "TAREAS":
 
     with st.form("nueva_tarea_form"):
         t_obra = st.text_input("Obra", value="ESOBADES").strip().upper()
-        t_desc = st.text_input("Descripción de Actividad / Asistencia").strip().upper()
-        if st.form_submit_button("➕ Registrar Actividad", type="primary", use_container_width=True):
-            if t_desc:
-                supabase.table("registros").insert({
-                    "fecha": datetime.now().strftime("%Y-%m-%d"),
-                    "monto": 0.0,
-                    "obra": t_obra,
-                    "descripcion": t_desc,
-                    "estado": "TAREA_PENDIENTE"
-                }).execute()
-                st.rerun()
-
-    res_t = supabase.table("registros").select("*").like("estado", "TAREA_%").execute()
-    if res_t.data:
-        for t in reversed(res_t.data):
-            est = "✅ LISTO" if "LISTO" in str(t["estado"]) else "⏳ PENDIENTE"
-            col_a, col_b, col_c = st.columns([4, 1.5, 1])
-            col_a.write(f"**{t['obra']}** - {t['descripcion']} ({t['fecha']})")
-            if col_b.button(est, key=f"t_est_{t['id']}"):
-                nuevo_est = "TAREA_PENDIENTE" if "LISTO" in str(t["estado"]) else "TAREA_LISTO"
-                supabase.table("registros").update({"estado": nuevo_est}).eq("id", t["id"]).execute()
-                st.rerun()
-            if col_c.button("🗑️", key=f"t_del_{t['id']}"):
-                supabase.table("registros").delete().eq("id", t["id"]).execute()
-                st.rerun()
-
-
-# ==============================================================================
-# VISTA 6: REPORTES Y EXPORTACIÓN EXCEL / WHATSAPP
-# ==============================================================================
-elif st.session_state.vista == "REPORTES":
-    c1, c2 = st.columns([1, 5])
-    with c1:
-        if st.button("⬅️"):
-            ir_a("MENU")
-            st.rerun()
-    with c2:
-        st.markdown("<h3 style='margin:0; color:#155A9A;'>REPORTES Y EXPORTACIÓN</h3>", unsafe_allow_html=True)
-
-    res_rep = supabase.table("registros").select("*").not_.like("estado", "TAREA_%").execute()
-    if res_rep.data:
-        df_rep = pd.DataFrame(res_rep.data)
-        df_rep["obra"] = df_rep["obra"].fillna("ESOBADES").astype(str).str.upper()
-        st.metric("Total General Registrado", f"Bs. {formatear_monto_venezuela(df_rep['monto'].sum())}")
-        
-        csv_data = df_rep[["id", "fecha", "obra", "monto", "descripcion"]].to_csv(index=False, sep=";", encoding="utf-8-sig")
-        st.download_button("📥 Descargar Base de Datos en Excel (CSV)", data=csv_data, file_name="Ordenes_ESOBADES.csv", mime="text/csv", use_container_width=True)
-
-# --- BARRA INFERIOR FIJA PARA VOLVER AL MENÚ ---
-st.markdown("---")
-if st.button("🏠 MENU PRINCIPAL", use_container_width=True):
-    ir_a("MENU")
-    st.rerun()
+        t_desc = st.text_input("
