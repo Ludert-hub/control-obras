@@ -110,12 +110,17 @@ st.markdown("""
         flex-direction: row !important;
         align-items: center !important;
         flex-wrap: nowrap !important;
-        gap: 4px !important;
+        gap: 2px !important;
     }
     div[data-testid="column"] {
         width: auto !important;
         flex: 1 1 auto !important;
         min-width: 0 !important;
+    }
+
+    /* Columnas más delgadas y compactas */
+    div[data-testid="column"] {
+        padding: 0 2px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -304,10 +309,10 @@ elif st.session_state.vista == "ORDENES":
 
         st.markdown("""
         <div style="display:flex; font-weight:700; color:#333; padding:8px 0; border-bottom:2px solid #ccc; font-size:14px;">
-            <div style="width:18%;">ORDEN</div>
-            <div style="width:32%;">Monto</div>
-            <div style="width:38%;">Concepto</div>
-            <div style="width:12%; text-align:right;">Ver</div>
+            <div style="width:14%;">ORDEN</div>
+            <div style="width:30%;">Monto</div>
+            <div style="width:46%;">Concepto</div>
+            <div style="width:10%; text-align:right;">Ver</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -326,7 +331,7 @@ elif st.session_state.vista == "ORDENES":
                 if not concepto_limpio:
                     concepto_limpio = str(row["obra"])
 
-                c1, c2, c3, c4 = st.columns([1.2, 2.3, 3.0, 1.0])
+                c1, c2, c3, c4 = st.columns([0.7, 1.6, 2.8, 0.5])
                 with c1:
                     st.markdown(f"<div class='orden-id'>{row['id']}</div>", unsafe_allow_html=True)
                 with c2:
