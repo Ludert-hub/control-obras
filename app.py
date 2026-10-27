@@ -4,7 +4,7 @@ import streamlit as st
 from supabase import create_client, Client
 import urllib.parse
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
+# --- CONFIGURACION DE LA PAGINA ---
 st.set_page_config(
     page_title="SYSSA, C.A. - Control de Obras",
     page_icon="🏗️",
@@ -12,10 +12,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS (ESTILO APPSHEET MÓVIL) ---
+# --- ESTILOS CSS PERSONALIZADOS (ESTILO APPSHEET MOVIL) ---
 st.markdown("""
 <style>
-    /* Ocultar menú estándar de Streamlit y ajustar márgenes */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     .block-container {
@@ -23,8 +22,6 @@ st.markdown("""
         padding-bottom: 5rem !important;
         max-width: 650px !important;
     }
-    
-    /* Barra Superior Azul */
     .top-bar {
         background-color: #155A9A;
         color: white;
@@ -42,8 +39,6 @@ st.markdown("""
         letter-spacing: 0.5px;
         margin: 0;
     }
-    
-    /* Cabecera de Fecha y Subtotal en la lista */
     .date-header {
         font-size: 15px;
         font-weight: 700;
@@ -62,8 +57,6 @@ st.markdown("""
         font-weight: 700;
         margin-left: 8px;
     }
-    
-    /* Filas de Órdenes */
     .monto-azul {
         color: #155A9A;
         font-weight: 700;
@@ -78,8 +71,6 @@ st.markdown("""
         color: #333;
         font-size: 15px;
     }
-    
-    /* Vista de Detalles (Details) */
     .detail-label {
         color: #666;
         font-size: 13px;
@@ -98,8 +89,6 @@ st.markdown("""
         font-weight: 700;
         margin-bottom: 8px;
     }
-    
-    /* Tarjetas del Menú Principal */
     .menu-card {
         border: 1px solid #ddd;
         border-radius: 8px;
@@ -109,10 +98,16 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         margin-bottom: 10px;
     }
+
+    /* Forzar que las columnas de Streamlit se mantengan horizontales y alineadas en una sola línea */
+    div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        gap: 0.2rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONEXIÓN A SUPABASE ---
+# --- CONEXION A SUPABASE ---
 URL = "https://ubfbyxlaakftmayftabc.supabase.co"
 KEY = "sb_publishable_VqZW4HmqWV--BLGWIAu3cg_AhGUIYoZ"
 
@@ -122,13 +117,13 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# --- ESTADO DE NAVEGACIÓN ---
+# --- ESTADO DE NAVEGACION ---
 if "vista" not in st.session_state:
-    st.session_state.vista = "MENU"  # MENU, ORDENES, DETALLE, FORMULARIO, TAREAS, REPORTES
+    st.session_state.vista = "MENU"
 if "orden_seleccionada" not in st.session_state:
     st.session_state.orden_seleccionada = None
 if "modo_formulario" not in st.session_state:
-    st.session_state.modo_formulario = "NUEVO"  # NUEVO o EDITAR
+    st.session_state.modo_formulario = "NUEVO"
 
 def ir_a(nueva_vista, registro=None, modo="NUEVO"):
     st.session_state.vista = nueva_vista
@@ -156,7 +151,6 @@ def fecha_espanol(dt):
     return f"{dt.day} de {MESES_ES.get(dt.month, '')} de {dt.year}"
 
 def desglosar_descripcion(desc_raw):
-    """Separa [ORIGEN] CONCEPTO | OBS: OBSERVACION"""
     desc_str = str(desc_raw or "")
     origen = "PUNTO"
     obs = ""
@@ -179,7 +173,7 @@ def desglosar_descripcion(desc_raw):
 
 
 # ==========================================
-# 🚨 ALERTA DE CRÉDITOS COMPACTA (>= 13 DÍAS)
+# ALERTA DE CREDITOS COMPACTA (>= 13 DIAS)
 # ==========================================
 def mostrar_alerta_creditos():
     try:
@@ -194,7 +188,8 @@ def mostrar_alerta_creditos():
                 if "CREDITO" in desc and pd.notnull(row["fecha_dt"]):
                     dias = (hoy - row["fecha_dt"].normalize()).days
                     if dias >= 13:
-                        deudas.append(f"<li><b>{row['fecha_dt'].strftime('%d/%m/%Y')}</b> | {str(row['obra']).upper()} | Bs. {formatear_monto_venezuela(row['monto'])} ({dias} días)</li>")
+                        obra_txt = str(row["obra"]).upper().replace("SRA. BARBARA", "ESOBADES").replace("SRA BARBARA", "ESOBADES")
+                        deudas.append(f"<li><b>{row['fecha_dt'].strftime('%d/%m/%Y')}</b> | {obra_txt} | Bs. {formatear_monto_venezuela(row['monto'])} ({dias} días)</li>")
             if deudas:
                 st.markdown(f"""
                 <div style="background-color: #fff3f3; border-left: 4px solid #cc0000; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 13px; color: #a80000;">
@@ -254,7 +249,7 @@ if st.session_state.vista == "MENU":
 
 
 # ==============================================================================
-# VISTA 2: LISTADO DE ÓRDENES AGRUPADO POR FECHA (Estilo Imagen 2)
+# VISTA 2: LISTADO DE ORDENES AGRUPADO POR FECHA (Estilo Imagen 2)
 # ==============================================================================
 elif st.session_state.vista == "ORDENES":
     c_nav1, c_nav2, c_nav3 = st.columns([1, 4, 1])
@@ -279,6 +274,7 @@ elif st.session_state.vista == "ORDENES":
     if rows:
         df = pd.DataFrame(rows)
         df["obra"] = df["obra"].fillna("ESOBADES").astype(str).str.upper()
+        df["obra"] = df["obra"].str.replace("SRA. BARBARA", "ESOBADES", regex=False).str.replace("SRA BARBARA", "ESOBADES", regex=False)
         df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce")
         df = df.sort_values(by=["fecha_dt", "id"], ascending=[False, False]).reset_index(drop=True)
 
@@ -338,7 +334,7 @@ elif st.session_state.vista == "ORDENES":
 
 
 # ==============================================================================
-# VISTA 3: DETALLES DE LA OPERACIÓN ("Details" - Estilo Imagen 5)
+# VISTA 3: DETALLES DE LA OPERACION ("Details" - Estilo Imagen 5)
 # ==============================================================================
 elif st.session_state.vista == "DETALLE":
     reg = st.session_state.orden_seleccionada
@@ -372,6 +368,7 @@ elif st.session_state.vista == "DETALLE":
 
     origen_val, concepto_val, obs_val = desglosar_descripcion(reg.get("descripcion", ""))
     fecha_dt = pd.to_datetime(reg.get("fecha"), errors="coerce")
+    obra_mostrar = str(reg.get("obra", "ESOBADES")).upper().replace("SRA. BARBARA", "ESOBADES").replace("SRA BARBARA", "ESOBADES")
 
     st.markdown(f"""
     <div class="detail-label">Concepto</div>
@@ -381,7 +378,7 @@ elif st.session_state.vista == "DETALLE":
     <div class="detail-value">{reg.get('id')}</div>
 
     <div class="detail-label">Obra / Destino</div>
-    <div class="detail-value">{str(reg.get('obra', 'ESOBADES')).upper()}</div>
+    <div class="detail-value">{obra_mostrar}</div>
 
     <div class="detail-label">Monto</div>
     <div class="detail-monto">Bs.{formatear_monto_venezuela(reg.get('monto', 0))}</div>
@@ -406,7 +403,7 @@ elif st.session_state.vista == "DETALLE":
 
 
 # ==============================================================================
-# VISTA 4: FORMULARIO NUEVA ORDEN / EDITAR ORDEN (Estilo Imágenes 3 y 4)
+# VISTA 4: FORMULARIO NUEVA ORDEN / EDITAR ORDEN (Estilo Imagenes 3 y 4)
 # ==============================================================================
 elif st.session_state.vista == "FORMULARIO":
     es_edicion = (st.session_state.modo_formulario == "EDITAR" and st.session_state.orden_seleccionada is not None)
@@ -426,7 +423,8 @@ elif st.session_state.vista == "FORMULARIO":
         res_all = supabase.table("registros").select("id, obra").execute()
         if res_all.data:
             proximo_id = max([int(r["id"]) for r in res_all.data if r.get("id")]) + 1
-            obras_existentes = sorted(list(set([str(r["obra"]).upper() for r in res_all.data if r.get("obra")])))
+            obras_raw = [str(r["obra"]).upper().replace("SRA. BARBARA", "ESOBADES").replace("SRA BARBARA", "ESOBADES") for r in res_all.data if r.get("obra")]
+            obras_existentes = sorted(list(set(obras_raw)))
         else:
             proximo_id = 1
             obras_existentes = ["ESOBADES"]
@@ -440,7 +438,7 @@ elif st.session_state.vista == "FORMULARIO":
     id_mostrar = reg_actual.get("id", proximo_id)
     monto_def = float(reg_actual.get("monto", 0.0)) if es_edicion else None
     origen_def, concepto_def, obs_def = desglosar_descripcion(reg_actual.get("descripcion", "")) if es_edicion else ("PUNTO", "", "")
-    obra_def = str(reg_actual.get("obra", "ESOBADES")).upper() if es_edicion else "ESOBADES"
+    obra_def = str(reg_actual.get("obra", "ESOBADES")).upper().replace("SRA. BARBARA", "ESOBADES").replace("SRA BARBARA", "ESOBADES") if es_edicion else "ESOBADES"
 
     try:
         fecha_def = datetime.strptime(str(reg_actual.get("fecha")), "%Y-%m-%d").date() if es_edicion else datetime.now().date()
@@ -575,8 +573,9 @@ elif st.session_state.vista == "TAREAS":
     if res_t.data:
         for t in reversed(res_t.data):
             est = "✅ LISTO" if "LISTO" in str(t["estado"]) else "⏳ PENDIENTE"
+            obra_t = str(t["obra"]).upper().replace("SRA. BARBARA", "ESOBADES").replace("SRA BARBARA", "ESOBADES")
             col_a, col_b, col_c = st.columns([4, 1.5, 1])
-            col_a.write(f"**{t['obra']}** - {t['descripcion']} ({t['fecha']})")
+            col_a.write(f"**{obra_t}** - {t['descripcion']} ({t['fecha']})")
             if col_b.button(est, key=f"t_est_{t['id']}"):
                 nuevo_est = "TAREA_PENDIENTE" if "LISTO" in str(t["estado"]) else "TAREA_LISTO"
                 supabase.table("registros").update({"estado": nuevo_est}).eq("id", t["id"]).execute()
@@ -587,7 +586,7 @@ elif st.session_state.vista == "TAREAS":
 
 
 # ==============================================================================
-# VISTA 6: REPORTES Y EXPORTACIÓN EXCEL / WHATSAPP
+# VISTA 6: REPORTES Y EXPORTACION EXCEL / WHATSAPP
 # ==============================================================================
 elif st.session_state.vista == "REPORTES":
     c1, c2 = st.columns([1, 5])
@@ -602,12 +601,13 @@ elif st.session_state.vista == "REPORTES":
     if res_rep.data:
         df_rep = pd.DataFrame(res_rep.data)
         df_rep["obra"] = df_rep["obra"].fillna("ESOBADES").astype(str).str.upper()
+        df_rep["obra"] = df_rep["obra"].str.replace("SRA. BARBARA", "ESOBADES", regex=False).str.replace("SRA BARBARA", "ESOBADES", regex=False)
         st.metric("Total General Registrado", f"Bs. {formatear_monto_venezuela(df_rep['monto'].sum())}")
         
         csv_data = df_rep[["id", "fecha", "obra", "monto", "descripcion"]].to_csv(index=False, sep=";", encoding="utf-8-sig")
         st.download_button("📥 Descargar Base de Datos en Excel (CSV)", data=csv_data, file_name="Ordenes_ESOBADES.csv", mime="text/csv", use_container_width=True)
 
-# --- BARRA INFERIOR FIJA PARA VOLVER AL MENÚ ---
+# --- BARRA INFERIOR FIJA PARA VOLVER AL MENU ---
 st.markdown("---")
 if st.button("🏠 MENU PRINCIPAL", use_container_width=True):
     ir_a("MENU")
