@@ -6,7 +6,7 @@ import urllib.parse
 
 # --- CONFIGURACION DE LA PAGINA ---
 st.set_page_config(
-    page_title="SYSSA, C.A. - Control de Obras",
+    page_title="OPERACION ARO, C.A. - Control de Obras",
     page_icon="🏗️",
     layout="centered",
     initial_sidebar_state="collapsed"
